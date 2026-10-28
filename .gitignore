@@ -1,0 +1,13 @@
+CLAUDE.md
+notes/
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+data/
+.DS_Store
+*.log
+.taste-skill/
+next-env.d.ts
+*.tsbuildinfo
