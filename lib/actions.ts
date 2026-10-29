@@ -22,7 +22,7 @@ async function send(db: Db, b: PayoutBatch) {
   for (const i of b.items) i.status = res.status === "SUCCESS" ? "SUCCESS" : "PENDING";
 }
 
-// PayPal said no to the whole batch, so no money moved: put its reports back in the queue as owed.
+// PayPal said no to a batch's first and only send, so no money moved: put its reports back in the queue as owed.
 function refused(db: Db, b: PayoutBatch) {
   b.status = "DENIED";
   for (const i of b.items) {
@@ -134,10 +134,9 @@ export function refreshPayouts() {
       try {
         await send(db, b); // same sender id as the first try
       } catch (e) {
-        if (e instanceof PayPalError && e.refused) {
-          refused(db, b);
-          errors.push(`${b.id}: PayPal refused it, the bugs are back in the queue (${e.message.slice(0, 100)})`);
-        } else errors.push(`${b.id}: still not confirmed (${(e as Error).message.slice(0, 100)})`);
+        // Never put bugs back in the queue from here: the first send may have gone through, and a 4xx now
+        // (duplicate id, funds spent by that first send) doesn't prove otherwise. A person checks in PayPal.
+        errors.push(`${b.id}: still not confirmed. Look up sender_batch_id ${b.senderBatchId} in the PayPal dashboard before paying these bugs again (${(e as Error).message.slice(0, 100)})`);
       }
     }
     save(db);

@@ -90,3 +90,28 @@ test("a batch PayPal refuses outright goes back to the queue instead of sticking
     delete process.env.PAYPAL_CLIENT_SECRET;
   }
 });
+
+test("a 4xx on a retry never puts an unconfirmed batch's bugs back in the queue", async () => {
+  process.env.PAYPAL_CLIENT_ID = "id";
+  process.env.PAYPAL_CLIENT_SECRET = "secret";
+  let call = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    if (url.endsWith("/v1/oauth2/token")) return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }), { status: 200 });
+    call += 1;
+    if (call === 1) throw new TypeError("fetch failed"); // first send: answer lost, PayPal may have paid
+    return new Response(JSON.stringify({ name: "USER_BUSINESS_ERROR", message: "Batch with given sender_batch_id already exists" }), { status: 400 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(() => payApproved(), /didn't confirm/);
+    const { errors } = await refreshPayouts();
+    assert.match(errors[0], /still not confirmed/);
+    const db = load();
+    assert.equal(db.batches.at(-1)!.status, "SENDING");
+    assert.equal(db.reports.find((r) => r.id === "BUG-0149")!.status, "paid"); // stays counted as paid until a person checks
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+  }
+});

@@ -3,6 +3,8 @@ import { handle, str } from "../../../lib/http.ts";
 import { allow, clientIp } from "../../../lib/ratelimit.ts";
 
 const HOUR = 3_600_000;
+// local part without leading/trailing dots; labels without edge hyphens; letters or punycode TLD
+const EMAIL = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*@([A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?\.)+([A-Za-z]{2,}|xn--[A-Za-z0-9-]+)$/;
 
 export async function POST(req: Request) {
   return handle(async () => {
@@ -11,7 +13,7 @@ export async function POST(req: Request) {
     const b = await req.json();
     const email = str(b.email, "PayPal email", 254);
     // strict enough that PayPal won't refuse it outright and block a whole payout batch
-    if (!/^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$/.test(email) || email.includes("..")) throw new Error("That PayPal email doesn't look right");
+    if (!EMAIL.test(email) || email.includes("..")) throw new Error("That PayPal email doesn't look right");
     return fileReport({
       title: str(b.title, "Title", 140),
       body: str(b.body, "What happened", 4000),
