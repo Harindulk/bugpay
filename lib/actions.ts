@@ -2,7 +2,7 @@
 // Every write runs inside locked(), which hands it a fresh copy of the store.
 import crypto from "node:crypto";
 import { autopaidToday, cents, decide, FAILED, nextId, pool } from "./policy.ts";
-import { captureOrder, createOrder, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
+import { captureOrder, createOrder, PayPalError, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
 import { load, locked, save } from "./store.ts";
 import { judge } from "./triage.ts";
 import type { Db, PayoutBatch, Report, Rules, Tester } from "./types.ts";
@@ -20,6 +20,19 @@ async function send(db: Db, b: PayoutBatch) {
   b.paypalBatchId = res.paypalBatchId;
   b.status = res.status;
   for (const i of b.items) i.status = res.status === "SUCCESS" ? "SUCCESS" : "PENDING";
+}
+
+// PayPal said no to the whole batch, so no money moved: put its reports back in the queue as owed.
+function refused(db: Db, b: PayoutBatch) {
+  b.status = "DENIED";
+  for (const i of b.items) {
+    i.status = "DENIED";
+    const r = db.reports.find((x) => x.id === i.reportId);
+    if (r && r.status === "paid") {
+      r.status = "approved";
+      r.payoutItem = undefined;
+    }
+  }
 }
 
 // Records the batch and marks the reports paid BEFORE calling PayPal, then saves, so an answer lost in transit
@@ -40,6 +53,11 @@ async function pay(db: Db, reports: Report[], trigger: PayoutBatch["trigger"]): 
   try {
     await send(db, batch);
   } catch (e) {
+    if (e instanceof PayPalError && e.refused) {
+      refused(db, batch);
+      save(db);
+      throw new Error(`PayPal refused batch ${id}, nothing was sent: ${e.message.slice(0, 160)}`);
+    }
     save(db);
     throw new Error(`PayPal didn't confirm batch ${id} (${(e as Error).message.slice(0, 100)}). It's marked Sending; use Check statuses on Payouts to retry it safely.`);
   }
@@ -116,7 +134,10 @@ export function refreshPayouts() {
       try {
         await send(db, b); // same sender id as the first try
       } catch (e) {
-        errors.push(`${b.id}: still not confirmed (${(e as Error).message.slice(0, 100)})`);
+        if (e instanceof PayPalError && e.refused) {
+          refused(db, b);
+          errors.push(`${b.id}: PayPal refused it, the bugs are back in the queue (${e.message.slice(0, 100)})`);
+        } else errors.push(`${b.id}: still not confirmed (${(e as Error).message.slice(0, 100)})`);
       }
     }
     save(db);

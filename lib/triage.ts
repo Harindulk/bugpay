@@ -25,7 +25,7 @@ Be fair to testers and careful with the studio's money.
 
 Verdicts:
 - valid: a real defect in this build, described well enough to act on.
-- duplicate: the same defect as an earlier report (same trigger and symptom, even if worded differently). Set duplicateOf to that report's id. The earliest report of a bug is the valid one.
+- duplicate: the same defect as an earlier report (same trigger and symptom, even if worded differently). Set duplicateOf to that report's id. The earliest report of a bug is the valid one. A report of a bug the studio closed is a duplicate of that closed report.
 - not_a_bug: a feature request, opinion, intended behaviour, or a listed known issue.
 - needs_info: might be a bug but nobody could reproduce it from what was written.
 
@@ -39,13 +39,15 @@ confidence is how sure you are of the verdict and severity together, from 0 to 1
 title: a clear one-line title in plain words. repro: the shortest numbered steps a developer could follow, empty if unknown.
 reasoning: one or two sentences a tester would accept as fair.`;
 
-// What a new report is compared against: everything the studio paid or approved, then Claude's valid calls,
-// newest first, capped so a flood of reports can't blow up every call.
+// What a new report is compared against: everything the studio paid, approved or closed as a real bug,
+// then Claude's other valid calls newest first, capped so a flood of reports can't blow up every call.
 function history(earlier: Report[], cap = 150): Report[] {
-  const counts = (e: Report) => e.status === "paid" || e.status === "approved";
-  const kept = [...earlier.filter(counts), ...earlier.filter((e) => !counts(e) && e.triage.verdict === "valid" && e.status !== "rejected").reverse()];
+  const decided = (e: Report) => e.status === "paid" || e.status === "approved" || (e.status === "rejected" && e.triage.verdict === "valid");
+  const kept = [...earlier.filter(decided), ...earlier.filter((e) => !decided(e) && e.triage.verdict === "valid").reverse()];
   return kept.slice(0, cap).sort((a, b) => a.id.localeCompare(b.id));
 }
+
+const label = (e: Report) => (e.status === "rejected" ? "closed by the studio, not paid" : e.triage.severity ?? "?");
 
 export async function judge(campaign: Campaign, earlier: Report[], r: NewReport): Promise<Judgement> {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return rules(earlier, r, campaign);
@@ -53,7 +55,7 @@ export async function judge(campaign: Campaign, earlier: Report[], r: NewReport)
     `Game: ${campaign.game}, build ${campaign.build}.`,
     `Playtest brief: ${campaign.brief}`,
     `Known issues (not bugs for bounty purposes):\n${campaign.knownIssues.map((k) => `- ${k}`).join("\n")}`,
-    `Earlier reports that are bugs:\n${history(earlier).map((e) => `${e.id} [${e.triage.severity ?? "?"}] ${e.title}: ${e.body.slice(0, 300)}`).join("\n") || "(none)"}`,
+    `Earlier reports that are bugs:\n${history(earlier).map((e) => `${e.id} [${label(e)}] ${e.title}: ${e.body.slice(0, 300)}`).join("\n") || "(none)"}`,
   ].join("\n\n");
   try {
     const client = new Anthropic();

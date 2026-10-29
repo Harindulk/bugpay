@@ -6,6 +6,16 @@ export const mock = () => !process.env.PAYPAL_CLIENT_ID || !process.env.PAYPAL_C
 const money = (n: number) => n.toFixed(2);
 const mockId = (p: string) => `MOCK${p}${Date.now().toString(36).toUpperCase()}`;
 
+// A PayPal answer with an HTTP status. 4xx (bar 408/409/429) means PayPal looked at the request and said no.
+export class PayPalError extends Error {
+  readonly status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+  get refused() { return this.status >= 400 && this.status < 500 && ![408, 409, 429].includes(this.status); }
+}
+
 let token: { value: string; until: number } | null = null;
 
 async function auth(): Promise<string> {
@@ -17,7 +27,7 @@ async function auth(): Promise<string> {
     body: "grant_type=client_credentials",
     signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) throw new Error(`PayPal auth failed: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new PayPalError(`PayPal auth failed: ${res.status} ${await res.text()}`, 0); // bad keys: fix them and retry, the batch isn't refused
   const j = (await res.json()) as { access_token: string; expires_in: number };
   token = { value: j.access_token, until: Date.now() + (j.expires_in - 60) * 1000 };
   return token.value;
@@ -35,7 +45,7 @@ async function call<T>(method: string, url: string, body?: unknown, idem?: strin
     signal: AbortSignal.timeout(20_000), // calls run inside the store lock; never hold it for minutes
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`PayPal ${method} ${url} failed: ${res.status} ${text}`);
+  if (!res.ok) throw new PayPalError(`PayPal ${method} ${url} failed: ${res.status} ${text.slice(0, 300)}`, res.status);
   return (text ? JSON.parse(text) : {}) as T;
 }
 

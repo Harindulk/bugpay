@@ -66,6 +66,27 @@ test("a payout PayPal never confirmed is retried with the same id, not paid agai
 });
 
 test("rate limit lets a burst through up to the cap, then refuses", () => {
-  const ok = Array.from({ length: 4 }, () => allow("t", 3, 60_000));
+  const ok = Array.from({ length: 4 }, () => allow([["t", 3]], 60_000));
   assert.deepEqual(ok, [true, true, true, false]);
+});
+
+test("a batch PayPal refuses outright goes back to the queue instead of sticking as Sending", async () => {
+  await review("BUG-0149", "approve", 3);
+  process.env.PAYPAL_CLIENT_ID = "id";
+  process.env.PAYPAL_CLIENT_SECRET = "secret";
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    if (url.endsWith("/v1/oauth2/token")) return new Response(JSON.stringify({ access_token: "tok", expires_in: 3600 }), { status: 200 });
+    return new Response(JSON.stringify({ name: "INSUFFICIENT_FUNDS" }), { status: 422 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(() => payApproved(), /refused/);
+    const db = load();
+    assert.equal(db.batches.at(-1)!.status, "DENIED");
+    assert.equal(db.reports.find((r) => r.id === "BUG-0149")!.status, "approved"); // owed, and payable again
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+  }
 });

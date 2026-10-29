@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Fund } from "../components/Fund.tsx";
 import { gridTheme } from "../components/grid.ts";
 import { ago, api, SevPill, Shell, StatusPill, usd, useStateApi, verdictWords, type State } from "../components/ui.tsx";
+import { FAILED } from "../lib/policy.ts";
 import type { Report, ReportStatus } from "../lib/types.ts";
 
 
@@ -62,7 +63,9 @@ export default function Queue() {
 
   const count = (k: ReportStatus | "all") => (k === "all" ? s.reports.length : s.reports.filter((r) => r.status === k).length);
   const approved = s.reports.filter((r) => r.status === "approved");
-  const autoToday = s.batches.filter((b) => b.trigger === "autopilot" && new Date(b.createdAt).toDateString() === new Date().toDateString()).length;
+  const autoToday = s.batches
+    .filter((b) => b.trigger === "autopilot" && new Date(b.createdAt).toDateString() === new Date().toDateString())
+    .flatMap((b) => b.items).filter((i) => !FAILED.has(i.status)).length; // same items autopaidToday counts
 
   return (
     <Shell s={s} crumb="Triage queue">
