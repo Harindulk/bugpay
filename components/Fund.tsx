@@ -5,16 +5,18 @@ import { api, usd } from "./ui.tsx";
 
 type PayPalNs = { Buttons: (o: unknown) => { render: (el: HTMLElement) => Promise<void>; close: () => void } };
 
+let sdk: Promise<PayPalNs> | null = null; // one script tag per page, however often the dialog opens
+
 function loadSdk(clientId: string): Promise<PayPalNs> {
   const w = window as unknown as { paypal?: PayPalNs };
   if (w.paypal) return Promise.resolve(w.paypal);
-  return new Promise((ok, fail) => {
+  return (sdk ??= new Promise<PayPalNs>((ok, fail) => {
     const s = document.createElement("script");
     s.src = `https://www.paypal.com/sdk/js?client-id=${encodeURIComponent(clientId)}&currency=USD&intent=capture`;
     s.onload = () => ok(w.paypal!);
-    s.onerror = () => fail(new Error("PayPal SDK failed to load"));
+    s.onerror = () => { sdk = null; s.remove(); fail(new Error("PayPal SDK failed to load")); };
     document.head.appendChild(s);
-  });
+  }));
 }
 
 export function Fund({ clientId, onDone }: { clientId: string | null; onDone: () => void }) {
@@ -36,8 +38,10 @@ export function Fund({ clientId, onDone }: { clientId: string | null; onDone: ()
   useEffect(() => {
     if (!open || !clientId || !box.current) return;
     let buttons: { close: () => void } | null = null;
+    let dead = false; // the amount changed or the dialog closed while the SDK was loading
     box.current.innerHTML = "";
     loadSdk(clientId).then((pp) => {
+      if (dead || !box.current) return;
       const b = pp.Buttons({
         style: { layout: "vertical", shape: "rect", label: "paypal", height: 40 },
         createOrder: order,
@@ -47,7 +51,7 @@ export function Fund({ clientId, onDone }: { clientId: string | null; onDone: ()
       buttons = b;
       return b.render(box.current!);
     }).catch((e) => setErr(e.message));
-    return () => buttons?.close();
+    return () => { dead = true; buttons?.close(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, amount, clientId]);
 

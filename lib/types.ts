@@ -45,8 +45,9 @@ export interface PayoutItem {
 }
 
 export interface PayoutBatch {
-  id: string; // our sender_batch_id
-  paypalBatchId: string;
+  id: string; // PB-0006, for people
+  senderBatchId?: string; // what PayPal saw; reused on every retry so a batch is never paid twice
+  paypalBatchId: string; // empty until PayPal confirms the batch
   createdAt: string;
   status: string; // PayPal batch_status
   trigger: "autopilot" | "studio";
@@ -78,6 +79,7 @@ export interface Campaign {
 }
 
 export interface Db {
+  ledgerId: string; // random per ledger, so PayPal batch ids never repeat after a reset
   campaign: Campaign;
   reports: Report[];
   batches: PayoutBatch[];

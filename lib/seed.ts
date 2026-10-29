@@ -1,4 +1,5 @@
 // Demo playtest for StarFun Games' Drive Away. Dates are relative to now so "today" always has activity.
+import crypto from "node:crypto";
 import type { Db, Report, Severity, Tester, Verdict } from "./types.ts";
 
 const T: Record<string, Tester> = {
@@ -83,6 +84,7 @@ export function seed(now = new Date()): Db {
     ({ id, paypalBatchId: `MOCKBATCH${id.slice(3)}`, createdAt: when, status: "SUCCESS", trigger, items: ids.map((x) => item(x)) });
 
   return {
+    ledgerId: crypto.randomUUID().slice(0, 8),
     campaign: {
       studio: "StarFun Games",
       game: "Drive Away: Endless Road Trip",

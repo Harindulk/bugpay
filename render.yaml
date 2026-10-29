@@ -1,0 +1,20 @@
+# Render Blueprint: free web service. The JSON store lives on the instance's disk,
+# so the demo data resets whenever the service restarts or redeploys.
+services:
+  - type: web
+    name: bugpay
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false

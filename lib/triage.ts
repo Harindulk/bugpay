@@ -39,23 +39,36 @@ confidence is how sure you are of the verdict and severity together, from 0 to 1
 title: a clear one-line title in plain words. repro: the shortest numbered steps a developer could follow, empty if unknown.
 reasoning: one or two sentences a tester would accept as fair.`;
 
+// What a new report is compared against: everything the studio paid or approved, then Claude's valid calls,
+// newest first, capped so a flood of reports can't blow up every call.
+function history(earlier: Report[], cap = 150): Report[] {
+  const counts = (e: Report) => e.status === "paid" || e.status === "approved";
+  const kept = [...earlier.filter(counts), ...earlier.filter((e) => !counts(e) && e.triage.verdict === "valid" && e.status !== "rejected").reverse()];
+  return kept.slice(0, cap).sort((a, b) => a.id.localeCompare(b.id));
+}
+
 export async function judge(campaign: Campaign, earlier: Report[], r: NewReport): Promise<Judgement> {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) return rules(earlier, r, campaign);
   const context = [
     `Game: ${campaign.game}, build ${campaign.build}.`,
     `Playtest brief: ${campaign.brief}`,
     `Known issues (not bugs for bounty purposes):\n${campaign.knownIssues.map((k) => `- ${k}`).join("\n")}`,
-    `Earlier reports:\n${earlier.map((e) => `${e.id} [${e.triage.verdict}${e.triage.severity ? " " + e.triage.severity : ""}] ${e.title}: ${e.body}`).join("\n") || "(none)"}`,
+    `Earlier reports that are bugs:\n${history(earlier).map((e) => `${e.id} [${e.triage.severity ?? "?"}] ${e.title}: ${e.body.slice(0, 300)}`).join("\n") || "(none)"}`,
   ].join("\n\n");
   try {
     const client = new Anthropic();
+    const format = betaZodOutputFormat(Judgement);
+    // The SDK moves `enum` into the description; put it back so the API constrains the values.
+    const props = (format.schema as { properties: Record<string, { enum?: string[]; anyOf?: { enum?: string[] }[] }> }).properties;
+    props.verdict.enum = [...Judgement.shape.verdict.options];
+    props.severity.anyOf![0].enum = [...Judgement.shape.severity.unwrap().options];
     const res = await client.beta.messages.parse({
       model: MODEL,
       max_tokens: 16000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       system: SYSTEM,
-      output_config: { effort: "medium", format: betaZodOutputFormat(Judgement) },
+      output_config: { effort: "medium", format },
       messages: [{
         role: "user",
         content: `${context}\n\nNew report\nTitle: ${r.title}\nDevice: ${r.device}\nBuild: ${r.build}\n\n${r.body}`,
@@ -64,17 +77,20 @@ export async function judge(campaign: Campaign, earlier: Report[], r: NewReport)
     if (res.stop_reason === "refusal" || !res.parsed_output) return { ...rules(earlier, r, campaign), reasoning: "Claude could not judge this one; rules made a first guess for the studio to check." };
     const j = res.parsed_output;
     const known = new Set(earlier.map((e) => e.id));
+    const verdict = j.verdict === "valid" && !j.severity ? "needs_info" : j.verdict; // no severity means no price
     return {
       ...j,
+      verdict,
       confidence: Math.min(1, Math.max(0, j.confidence)),
-      severity: j.verdict === "valid" ? j.severity : null,
-      duplicateOf: j.verdict === "duplicate" && j.duplicateOf && known.has(j.duplicateOf) ? j.duplicateOf : null,
+      severity: verdict === "valid" ? j.severity : null,
+      duplicateOf: verdict === "duplicate" && j.duplicateOf && known.has(j.duplicateOf) ? j.duplicateOf : null,
       by: res.model,
     };
   } catch (e) {
-    if (e instanceof Anthropic.APIError) {
-      console.error("Claude triage failed, using rules:", e.status, e.message);
-      return { ...rules(earlier, r, campaign), reasoning: "Claude was unreachable; rules made a first guess for the studio to check." };
+    // AnthropicError covers API errors and structured outputs that fail to parse; either way the report is kept
+    if (e instanceof Anthropic.AnthropicError) {
+      console.error("Claude triage failed, using rules:", e.message);
+      return { ...rules(earlier, r, campaign), reasoning: "Claude couldn't judge this one; rules made a first guess for the studio to check." };
     }
     throw e;
   }

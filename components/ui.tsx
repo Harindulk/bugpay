@@ -33,7 +33,14 @@ export function useStateApi() {
   const [s, setS] = useState<State | null>(null);
   const [err, setErr] = useState("");
   const reload = useCallback(() => api<State>("/api/state").then(setS, (e) => setErr(e.message)), []);
-  useEffect(() => { reload(); }, [reload]);
+  useEffect(() => {
+    reload();
+    // pick up changes made in another tab or by the agent elsewhere
+    const onFocus = () => document.visibilityState === "visible" && reload();
+    document.addEventListener("visibilitychange", onFocus);
+    window.addEventListener("focus", onFocus);
+    return () => { document.removeEventListener("visibilitychange", onFocus); window.removeEventListener("focus", onFocus); };
+  }, [reload]);
   return { s, err, reload };
 }
 

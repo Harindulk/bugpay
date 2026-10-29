@@ -3,6 +3,9 @@ import type { Db, Report, Rules, Severity, Triage, Verdict } from "./types.ts";
 
 export const cents = (n: number) => Math.round(n * 100) / 100;
 
+// PayPal item statuses after which the money never reached the tester.
+export const FAILED = new Set(["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED", "CANCELED"]);
+
 export function bountyFor(verdict: Verdict, severity: Severity | null, rules: Rules): number {
   return verdict === "valid" && severity ? rules.prices[severity] : 0;
 }
@@ -22,6 +25,7 @@ export function autopaidToday(db: Db, now = new Date()): number {
     db.batches
       .filter((b) => b.trigger === "autopilot" && sameDay(b.createdAt, now))
       .flatMap((b) => b.items)
+      .filter((i) => !FAILED.has(i.status))
       .reduce((s, i) => s + i.amount, 0),
   );
 }
@@ -32,6 +36,7 @@ export function decide(j: Judgement, rules: Rules, usedToday: number, left: numb
   const bounty = bountyFor(j.verdict, j.severity, rules);
   const review = (why: string) => ({ bounty, decision: "review" as const, decisionReason: why });
   if (j.verdict !== "valid") return review(`Marked ${j.verdict.replace(/_/g, " ")}, so a person decides`);
+  if (bounty <= 0) return review("No severity, so no price to pay");
   if (!rules.autopilot) return review("Autopilot is off");
   if (j.confidence < rules.minConfidence) return review(`Confidence ${Math.round(j.confidence * 100)}% is under ${Math.round(rules.minConfidence * 100)}%`);
   if (bounty > rules.perBugCap) return review(`$${bounty} is over the $${rules.perBugCap} per-bug cap`);

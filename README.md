@@ -12,6 +12,7 @@ Bugpay does the reading and the paying:
 4. The studio's price table sets the bounty. Claude never picks the amount.
 5. **Autopilot** pays a valid bug on the spot through **PayPal Payouts** when Claude is sure enough and the bounty fits under a per-bug cap and a daily cap. Everything else waits in the triage queue.
 6. The studio approves or edits the rest in the queue and sends them as one Payouts batch. The ledger tracks every payout's PayPal status, plus the pool against what was funded.
+7. Or the studio tells the **agent**: "approve Lena's handbrake bug at $20, close the feature request and pay everything approved". Claude reads the queue and uses the same approve, close and pay actions as the buttons.
 
 ## PayPal APIs used
 
@@ -29,6 +30,7 @@ Two guards stop double payment: every capture and payout call sends a `PayPal-Re
 - **Model:** Claude Opus 5.5 (`claude-opus-5-5`) through the Anthropic TypeScript SDK, with structured outputs (a Zod schema via `betaZodOutputFormat`), so the verdict comes back as typed JSON. Server-side refusal fallback is on.
 - **What it decides:** verdict, duplicate-of, severity, confidence, a clean title, repro steps and the reasoning shown to the studio and the tester.
 - **What it does not decide:** the money. `lib/policy.ts` turns the judgement into a bounty from the price table and decides auto-pay or review, with unit tests for the caps.
+- **The agent** (`lib/agent.ts`) runs Claude with the SDK's tool runner and six strict tools: list the queue, read the pool, approve, close, pay approved, change autopilot. Tester-written text reaches it, so its limits live in the tools, not the prompt: it can't set a bounty above twice the price table, and it can't send more than the daily cap in one command. Both limits are unit tested.
 - **No key?** Triage falls back to keyword rules (`rules()` in `lib/triage.ts`). Rules are never sure enough to trigger autopilot.
 
 ## Run it
@@ -48,7 +50,9 @@ To run against the real PayPal sandbox and Claude:
 2. Copy `.env.example` to `.env.local` and fill in `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and `ANTHROPIC_API_KEY`.
 3. `npm run build && npm start`. "Add funds" now shows real PayPal buttons; log in with a sandbox personal account (Sandbox > Accounts) to pay. Payouts to tester emails that aren't sandbox accounts show as Unclaimed, which is PayPal's normal behaviour.
 
-Tests (bounty rules, pool arithmetic, fallback triage):
+To host it for free, connect the repo to [Render](https://render.com) as a Blueprint (`render.yaml`) and add the three keys as environment variables. The JSON store is on the instance's disk, so the demo data resets when the service restarts.
+
+Tests (bounty rules, pool arithmetic, fallback triage, the agent's limits):
 
 ```bash
 npm test
@@ -60,8 +64,9 @@ npm test
 app/page.tsx          triage queue: pool, autopilot rules, AG Grid queue, report detail
 app/ledger/page.tsx   payouts ledger and pool funding
 app/submit/page.tsx   public tester form
-app/api/*             state, reports, review, payouts, pool funding, rules
+app/api/*             state, reports, review, payouts, pool funding, rules, agent
 lib/triage.ts         Claude triage and the keyword fallback
+lib/agent.ts          Claude agent: tools and their money limits
 lib/policy.ts         price table, caps, pool maths (no AI)
 lib/paypal.ts         Orders, Payouts and OAuth, with mock mode
 lib/store.ts          JSON file store (single studio)

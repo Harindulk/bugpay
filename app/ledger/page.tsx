@@ -7,12 +7,12 @@ import { api, Shell, usd, useStateApi } from "../../components/ui.tsx";
 
 interface Line { batch: string; paypalBatchId: string; sent: string; trigger: string; reportId: string; tester: string; country: string; email: string; amount: number; status: string }
 
-const statusClass = (s: string) => (s === "SUCCESS" ? "positive" : ["FAILED", "DENIED", "RETURNED", "BLOCKED"].includes(s) ? "negative" : s === "UNCLAIMED" ? "warning" : "neutral");
-const statusWords: Record<string, string> = { SUCCESS: "Received", PENDING: "Sending", UNCLAIMED: "Unclaimed", FAILED: "Failed", DENIED: "Denied", RETURNED: "Returned", ONHOLD: "On hold", BLOCKED: "Blocked" };
+const statusClass = (s: string) => (s === "SUCCESS" ? "positive" : ["FAILED", "DENIED", "RETURNED", "BLOCKED"].includes(s) ? "negative" : s === "UNCLAIMED" || s === "SENDING" ? "warning" : "neutral");
+const statusWords: Record<string, string> = { SENDING: "Not confirmed", SUCCESS: "Received", PENDING: "Sending", UNCLAIMED: "Unclaimed", FAILED: "Failed", DENIED: "Denied", RETURNED: "Returned", ONHOLD: "On hold", BLOCKED: "Blocked" };
 
 export default function Ledger() {
   const { s, err, reload } = useStateApi();
-  const [msg, setMsg] = useState("");
+  const [msg, setMsg] = useState<{ text: string; bad: boolean } | null>(null);
   const lines = useMemo<Line[]>(() => {
     if (!s) return [];
     return [...s.batches].reverse().flatMap((b) => b.items.map((i) => {
@@ -33,10 +33,12 @@ export default function Ledger() {
   ], []);
 
   if (!s) return <Shell s={null} crumb="Payouts"><p className={err ? "error" : "muted"}>{err || "Loading payouts"}</p></Shell>;
-  const total = lines.reduce((a, l) => a + l.amount, 0);
-  const countries = new Set(lines.map((l) => l.country)).size;
-  const auto = lines.filter((l) => l.trigger === "Autopilot");
-  const byTester = Object.values(lines.reduce<Record<string, { name: string; country: string; email: string; bugs: number; amount: number }>>((m, l) => {
+  const failed = new Set(["FAILED", "RETURNED", "BLOCKED", "REFUNDED", "REVERSED", "DENIED", "CANCELED"]);
+  const delivered = lines.filter((l) => !failed.has(l.status)); // a failed payout goes back to the queue, so it isn't counted as sent
+  const total = delivered.reduce((a, l) => a + l.amount, 0);
+  const countries = new Set(delivered.map((l) => l.country)).size;
+  const auto = delivered.filter((l) => l.trigger === "Autopilot");
+  const byTester = Object.values(delivered.reduce<Record<string, { name: string; country: string; email: string; bugs: number; amount: number }>>((m, l) => {
     const t = (m[l.email] ??= { name: l.tester, country: l.country, email: l.email, bugs: 0, amount: 0 });
     t.bugs += 1;
     t.amount += l.amount;
@@ -48,13 +50,13 @@ export default function Ledger() {
       <div className="titlerow">
         <div>
           <h1>Payouts</h1>
-          <p className="finding"><b>{usd(total)} sent to {new Set(lines.map((l) => l.email)).size} testers in {countries} countries</b> over {lines.length} PayPal payouts. Autopilot sent {auto.length} of them ({usd(auto.reduce((a, l) => a + l.amount, 0))}).</p>
+          <p className="finding"><b>{usd(total)} sent to {new Set(delivered.map((l) => l.email)).size} testers in {countries} countries</b> over {delivered.length} PayPal payouts{lines.length > delivered.length ? ` (${lines.length - delivered.length} failed and went back to the queue)` : ""}. Autopilot sent {auto.length} of them ({usd(auto.reduce((a, l) => a + l.amount, 0))}).</p>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => api("/api/payouts").then(() => { reload(); setMsg("Statuses checked with PayPal"); }, (e) => setMsg(e.message))}>Check statuses with PayPal</button>
+          <button className="btn" onClick={() => api<{ errors: string[] }>("/api/payouts").then((r) => { reload(); setMsg(r.errors.length ? { text: `Some batches couldn't be checked: ${r.errors.join("; ")}`, bad: true } : { text: "Statuses checked with PayPal", bad: false }); }, (e) => setMsg({ text: e.message, bad: true }))}>Check statuses with PayPal</button>
         </div>
       </div>
-      {msg && <p className="muted" role="status" style={{ margin: "-12px 0 0" }}>{msg}</p>}
+      {msg && <p className={msg.bad ? "error" : "muted"} role="status" style={{ margin: "-12px 0 0" }}>{msg.text}</p>}
       <div className="grid">
         <AgGridReact<Line> theme={gridTheme} domLayout="autoHeight" rowData={lines} columnDefs={cols} overlayNoRowsTemplate="No payouts yet. Approve a report and press Pay." />
       </div>

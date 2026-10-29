@@ -15,6 +15,7 @@ async function auth(): Promise<string> {
     method: "POST",
     headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
     body: "grant_type=client_credentials",
+    signal: AbortSignal.timeout(20_000),
   });
   if (!res.ok) throw new Error(`PayPal auth failed: ${res.status} ${await res.text()}`);
   const j = (await res.json()) as { access_token: string; expires_in: number };
@@ -31,6 +32,7 @@ async function call<T>(method: string, url: string, body?: unknown, idem?: strin
       ...(idem ? { "PayPal-Request-Id": idem } : {}), // retries never double-pay
     },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(20_000), // calls run inside the store lock; never hold it for minutes
   });
   const text = await res.text();
   if (!res.ok) throw new Error(`PayPal ${method} ${url} failed: ${res.status} ${text}`);
@@ -49,7 +51,7 @@ export async function createOrder(amount: number, description: string): Promise<
 export async function captureOrder(orderId: string, mockAmount = 0): Promise<{ captureId: string; amount: number }> {
   if (mock()) return { captureId: mockId("CAPTURE"), amount: mockAmount };
   const o = await call<{ purchase_units: { payments: { captures: { id: string; status: string; amount: { value: string } }[] } }[] }>(
-    "POST", `/v2/checkout/orders/${orderId}/capture`, {}, `capture-${orderId}`,
+    "POST", `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, `capture-${orderId}`,
   );
   const c = o.purchase_units[0].payments.captures[0];
   if (c.status !== "COMPLETED") throw new Error(`Capture ${c.id} is ${c.status}`);
@@ -58,11 +60,11 @@ export async function captureOrder(orderId: string, mockAmount = 0): Promise<{ c
 
 export interface PayoutLine { senderItemId: string; email: string; amount: number; note: string }
 
-export async function sendPayouts(batchId: string, lines: PayoutLine[]): Promise<{ paypalBatchId: string; status: string }> {
+export async function sendPayouts(senderBatchId: string, lines: PayoutLine[]): Promise<{ paypalBatchId: string; status: string }> {
   if (mock()) return { paypalBatchId: mockId("BATCH"), status: "SUCCESS" };
   const r = await call<{ batch_header: { payout_batch_id: string; batch_status: string } }>("POST", "/v1/payments/payouts", {
     sender_batch_header: {
-      sender_batch_id: batchId, // PayPal rejects a reused id, a second guard against paying twice
+      sender_batch_id: senderBatchId, // PayPal rejects a reused id, a second guard against paying twice
       email_subject: "You got a bug bounty",
       email_message: "Thanks for testing. Your bounty is attached.",
     },
@@ -73,7 +75,7 @@ export async function sendPayouts(batchId: string, lines: PayoutLine[]): Promise
       note: l.note,
       sender_item_id: l.senderItemId,
     })),
-  }, batchId);
+  }, senderBatchId);
   return { paypalBatchId: r.batch_header.payout_batch_id, status: r.batch_header.batch_status };
 }
 
@@ -82,7 +84,7 @@ export async function payoutStatus(paypalBatchId: string) {
   const r = await call<{
     batch_header: { batch_status: string };
     items: { payout_item_id: string; transaction_status: string; payout_item: { sender_item_id: string } }[];
-  }>("GET", `/v1/payments/payouts/${paypalBatchId}`);
+  }>("GET", `/v1/payments/payouts/${encodeURIComponent(paypalBatchId)}`);
   return {
     status: r.batch_header.batch_status,
     items: r.items.map((i) => ({ senderItemId: i.payout_item.sender_item_id, paypalItemId: i.payout_item_id, status: i.transaction_status })),
