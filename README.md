@@ -1,10 +1,41 @@
 # Bugpay
 
-Pay your playtesters per bug. Claude reads every report, PayPal pays the ones you accept.
+Pay playtesters for each bug they find without paying for junk. Claude reads every report, code sets the price, and PayPal Payouts sends the money.
 
-Small game studios run playtests with testers in many countries. Paying per bug is fair and keeps testers looking, but in practice it means reading every report, spotting duplicates, guessing severity and then sending dozens of small cross-border payments by hand. Most small studios end up paying a flat fee, or nothing.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Harindulk/bugpay)
 
-Bugpay does the reading and the paying:
+![Mock mode, start to finish: a tester files a crash on the public form, triage grades it S1 and holds it for the studio, the studio approves and pays, and the payout shows up in the ledger](docs/mock-flow.gif)
+
+Demo video (3 min): [coming before the Devpost close]
+
+## Why per-bug pay needs triage
+
+Paying for each accepted bug is how crowd QA already works: uTest and Test IO pay per approved bug and nothing for duplicates ([Test IO Academy](https://academy.test.io/en/articles/6184452-new-payout-system)). The catch is that cash per report draws junk, and AI has made junk cheap to write.
+
+- HackerOne says "60-80% of vulnerability submissions are invalid" and sells AI triage to filter them ([HackerOne](https://www.hackerone.com/platform/triage)).
+- curl ended its bug bounty at the end of January 2026 after a flood of AI-generated reports. Daniel Stenberg said the goal was to "remove the incentive for people to submit crap and non-well researched reports to us. AI generated or not." ([The Register, 21 Jan 2026](https://www.theregister.com/2026/01/21/curl_ends_bug_bounty/))
+- Reports on Bugcrowd more than quadrupled over three weeks in March 2026, most of them fake, according to the Financial Times as reported by [Decrypt](https://decrypt.co/368309/ai-slop-floods-bug-bounty-programs-fake-reports).
+- For games, BetaHub already uses AI to merge duplicate reports and rank them, but its feature list says nothing about paying testers ([BetaHub](https://betahub.io/features/)). HackerOne does triage and pay, at enterprise prices.
+
+So a small game studio that wants to pay testers per bug has to read every report, spot the duplicates, guess the severity and then send dozens of small cross-border payments by hand. Most end up paying a flat fee, which rewards whoever sends the most reports, or nothing at all.
+
+Bugpay pays only for bugs that survive triage. A duplicate names the original, so only the first finder is paid. Vague or made-up reports wait for a person. A report that tries to give the AI orders is held. Autopilot pays only inside caps written in code, and PayPal Payouts reaches testers in 156+ countries with no fee on their side ([Payouts FAQ](https://developer.paypal.com/payouts/faqs)).
+
+## How it works
+
+```mermaid
+flowchart LR
+  S[Studio] -- PayPal Checkout --> P[(Bounty pool)]
+  T[Tester] -- report + PayPal email --> C{Claude triage}
+  C -- duplicate, not a bug, needs info --> Q[Triage queue]
+  C -- valid, S1 to S4 --> R[Price table and caps<br/>lib/policy.ts]
+  R -- sure enough, under both caps --> A[Autopilot]
+  R -- otherwise --> Q
+  Q -- studio or agent approves --> B[Payouts batch]
+  A --> B
+  P -.-> B
+  B -- PayPal Payouts --> T
+```
 
 1. The studio funds a bounty pool with **PayPal Checkout**.
 2. Testers file bugs on a public form with their PayPal email.
@@ -54,11 +85,21 @@ To run against the real PayPal sandbox and Claude:
 
 To host it for free, connect the repo to [Render](https://render.com) as a Blueprint (`render.yaml`) and add the three keys as environment variables, plus `STUDIO_PASSCODE`. With a passcode set, anyone can file bugs on the tester form, but paying, approving, funding, the autopilot rules, the agent and **Reset demo** ask for it, and an address that guesses wrong ten times is locked out for an hour. The JSON store is on the instance's disk, so the demo data also resets when the service restarts.
 
-Tests (bounty rules, pool arithmetic, fallback triage, the agent's limits):
+Tests (bounty rules, pool arithmetic, fallback triage, the agent's limits, the eval labels):
 
 ```bash
 npm test
 ```
+
+## Triage eval
+
+`eval/reports.json` holds 50 labelled bug reports for the demo playtest. **They are synthetic**: they were written for this eval, because Drive Away has not had a human playtest yet, so there are no real tester reports to use. The mix: 19 new bugs (one shouting "CRITICAL" about a typo), 10 reworded duplicates of the seeded bugs, 7 feature requests, opinions and known issues, 5 vague reports, 6 AI-style reports about features the game doesn't have, and 3 that try to instruct the AI.
+
+```bash
+npm run eval
+```
+
+Each report goes through the same steps as a real one (triage, then the price table and caps, then the injection hold) against the seeded playtest. The script prints how many verdicts were right, severities right, duplicates caught with the right original, wrong autopays and real bugs missed, then lists every miss. With `ANTHROPIC_API_KEY` in `.env.local` it calls Claude about 50 times; without it, it scores the keyword rules.
 
 ## Layout
 
@@ -72,6 +113,7 @@ lib/agent.ts          Claude agent: tools and their money limits
 lib/policy.ts         price table, caps, pool maths (no AI)
 lib/paypal.ts         Orders, Payouts and OAuth, with mock mode
 lib/store.ts          JSON file store (single studio)
+eval/                 labelled synthetic reports and npm run eval
 ```
 
 Built with Next.js, AG Grid Community and the Anthropic SDK.
@@ -84,4 +126,6 @@ Built with Next.js, AG Grid Community and the Anthropic SDK.
 
 ## Licence
 
-MIT
+MIT, see [LICENSE](LICENSE).
+
+GitHub topics: `paypal` `paypal-payouts` `claude` `anthropic` `ag-grid` `nextjs` `bug-bounty` `playtesting` `game-development` `ai-agents`
