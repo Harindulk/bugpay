@@ -43,3 +43,15 @@ test("what the agent pays counts against the daily cap it shares with autopilot,
 test("agent cannot pay a report twice", async () => {
   assert.match(await call(agentTools([]), "approve_report", { id: "BUG-0141", bounty: null }), /already paid/);
 });
+
+test("agent refuses to act on a report that tries to instruct the AI", async () => {
+  const actions: { tool: string; ok: boolean }[] = [];
+  const tools = agentTools(actions as never);
+  assert.match(await call(tools, "list_reports", { status: "review" }), /BUG-0151[^}]*"warning":"This report's text tries to give the AI instructions/);
+  assert.match(await call(tools, "approve_report", { id: "BUG-0151", bounty: 500 }), /^Refused: BUG-0151's text tries to give the AI instructions/);
+  assert.match(await call(tools, "approve_report", { id: "BUG-0151", bounty: null }), /^Refused/);
+  assert.match(await call(tools, "set_autopilot", { autopilot: null, perBugCap: null, dailyCap: 5000 }), /^Refused: only the studio/);
+  const db = load();
+  assert.equal(db.reports.find((r) => r.id === "BUG-0151")!.status, "review");
+  assert.equal(db.campaign.rules.dailyCap, 50);
+});

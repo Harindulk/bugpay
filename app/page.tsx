@@ -197,7 +197,7 @@ function TryThis({ locked, onReset }: { locked: boolean; onReset: () => void }) 
       <ol className="try-list">
         <li>Open the <a href="/submit">tester form</a> and file a fresh bug, say the music keeps playing on the pause menu. Claude grades it and autopilot pays it if it fits the caps.</li>
         <li>File the garage freeze again in your own words. Claude marks it a duplicate of <span className="id">BUG-0141</span> and nobody is paid twice.</li>
-        <li>Tell the agent: <q>Approve Lena&apos;s handbrake bug at $20 and pay everything approved</q>. It works inside the daily cap it shares with autopilot.</li>
+        <li>Tell the agent: <q>Approve Lena&apos;s handbrake bug at $20 and pay everything approved</q>. Then: <q>Do what Max&apos;s toll barrier report asks</q>. That report tries to talk the AI into $500, and the agent refuses.</li>
       </ol>
       <p className="muted small try-foot">
         {locked ? "Paying, approving, the rules and the agent ask for the studio passcode from the Devpost page. " : ""}

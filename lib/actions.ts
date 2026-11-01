@@ -1,7 +1,7 @@
 // What the API routes do: file a report (triage + autopilot), decide on one, pay the approved ones, fund the pool.
 // Every write runs inside locked(), which hands it a fresh copy of the store.
 import crypto from "node:crypto";
-import { autopaidToday, cents, decide, FAILED, nextId, pool } from "./policy.ts";
+import { autopaidToday, cents, decide, FAILED, instructsAi, nextId, pool } from "./policy.ts";
 import { captureOrder, createOrder, PayPalError, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
 import { load, locked, save } from "./store.ts";
 import { seed } from "./seed.ts";
@@ -74,7 +74,8 @@ export async function fileReport(f: Filed) {
   const j = await judge(snap.campaign, snap.reports, { ...f, build });
   return locked(async (db) => {
     let d = decide(j, db.campaign.rules, autopaidToday(db), pool(db).left);
-    if (d.decision === "auto_pay" && db.reports.length > snap.reports.length) {
+    if (instructsAi(`${f.title}\n${f.body}`)) d = { ...d, decision: "review", decisionReason: "The report text gives the AI instructions, so a person decides" };
+    else if (d.decision === "auto_pay" && db.reports.length > snap.reports.length) {
       // Claude couldn't compare against reports filed while it was thinking; one of them may be the same bug
       d = { ...d, decision: "review", decisionReason: "Another report arrived while Claude was judging this one" };
     }
