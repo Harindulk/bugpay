@@ -9,6 +9,7 @@ export type State = Db & {
   autopaidToday: number;
   mode: { paypal: "mock" | "sandbox"; ai: "claude" | "rules" };
   paypalClientId: string | null;
+  locked: boolean; // the server wants a studio passcode for money, rules and agent calls
 };
 
 export const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -22,9 +23,20 @@ export function ago(iso: string, now = Date.now()) {
   return h < 48 ? "Yesterday" : `${Math.round(h / 24)} days`;
 }
 
-export async function api<T = unknown>(url: string, body?: unknown): Promise<T> {
-  const res = await fetch(url, body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const PASS = "bugpay-passcode";
+
+export async function api<T = unknown>(url: string, body?: unknown, asked = false): Promise<T> {
+  const headers = { "Content-Type": "application/json", "x-studio-passcode": sessionStorage.getItem(PASS) ?? "" };
+  const res = await fetch(url, body === undefined ? { cache: "no-store", headers } : { method: "POST", headers, body: JSON.stringify(body) });
   const j = await res.json();
+  if (res.status === 401 && !asked) {
+    // hosted demo: ask once, keep it for this tab, try again
+    const p = window.prompt("Studio passcode (it's on the Devpost page)");
+    if (p) {
+      sessionStorage.setItem(PASS, p.trim());
+      return api<T>(url, body, true);
+    }
+  }
   if (!res.ok) throw new Error(j.error || `Request failed (${res.status})`);
   return j as T;
 }

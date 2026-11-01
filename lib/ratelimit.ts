@@ -11,6 +11,8 @@ export function allow(buckets: [key: string, max: number][], windowMs: number): 
   return true;
 }
 
+export const tries = (key: string, windowMs: number) => (hits.get(key) ?? []).filter((t) => Date.now() - t < windowMs).length;
+
 // The client can write anything into X-Forwarded-For; the proxy in front of us appends the real address last.
 export function clientIp(req: Request): string {
   const h = req.headers;

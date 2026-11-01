@@ -92,6 +92,8 @@ export default function Queue() {
         <Autopilot s={s} onChange={reload} />
       </div>
 
+      <TryThis locked={s.locked} onReset={reload} />
+
       <AgentBox ai={s.mode.ai} onDone={reload} />
 
       <div className="row2">
@@ -172,6 +174,35 @@ function AgentBox({ ai, onDone }: { ai: State["mode"]["ai"]; onDone: () => void 
           )}
         </div>
       )}
+    </section>
+  );
+}
+
+// For people opening the hosted demo cold. Hidden for this tab once closed.
+function TryThis({ locked, onReset }: { locked: boolean; onReset: () => void }) {
+  const [hidden, setHidden] = useState(true);
+  const [msg, setMsg] = useState("");
+  useEffect(() => setHidden(sessionStorage.getItem("bugpay-try-hidden") === "1"), []);
+  if (hidden) return null;
+  const reset = () => {
+    if (!window.confirm("Put the demo back to the seeded playtest? Everything filed or paid here is cleared.")) return;
+    api("/api/reset", {}).then(() => { setMsg("Demo reset"); onReset(); }, (e) => setMsg(e.message));
+  };
+  return (
+    <section className="card try" aria-labelledby="try-title">
+      <div className="try-head">
+        <h2 id="try-title">Try it</h2>
+        <button className="btn" onClick={() => { sessionStorage.setItem("bugpay-try-hidden", "1"); setHidden(true); }}>Hide</button>
+      </div>
+      <ol className="try-list">
+        <li>Open the <a href="/submit">tester form</a> and file a fresh bug, say the music keeps playing on the pause menu. Claude grades it and autopilot pays it if it fits the caps.</li>
+        <li>File the garage freeze again in your own words. Claude marks it a duplicate of <span className="id">BUG-0141</span> and nobody is paid twice.</li>
+        <li>Tell the agent: <q>Approve Lena&apos;s handbrake bug at $20 and pay everything approved</q>. It works inside the daily cap it shares with autopilot.</li>
+      </ol>
+      <p className="muted small try-foot">
+        {locked ? "Paying, approving, the rules and the agent ask for the studio passcode from the Devpost page. " : ""}
+        <button className="linkish" onClick={reset}>Reset demo</button>{msg && <span role="status"> · {msg}</span>}
+      </p>
     </section>
   );
 }

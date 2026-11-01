@@ -132,6 +132,14 @@ textarea.input { height: auto; min-height: 112px; padding: 8px 10px; resize: ver
 .prices { display: flex; gap: 12px; font-size: var(--fs-small); color: var(--muted); flex-wrap: wrap; }
 .prices b { color: var(--text); font-weight: 500; }
 
+/* try it */
+.try { display: grid; gap: 10px; padding: 16px 20px; }
+.try-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.try-list { margin: 0; padding-left: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 36px; }
+.try-list a { color: var(--accent); }
+.try-foot { margin: 0; }
+@media (max-width: 900px) { .try-list { grid-template-columns: 1fr; row-gap: 8px; } }
+
 /* agent */
 .agent { display: grid; gap: 12px; padding: 16px 20px; }
 .agent-form { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }

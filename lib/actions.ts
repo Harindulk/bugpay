@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { autopaidToday, cents, decide, FAILED, nextId, pool } from "./policy.ts";
 import { captureOrder, createOrder, PayPalError, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
 import { load, locked, save } from "./store.ts";
+import { seed } from "./seed.ts";
 import { judge } from "./triage.ts";
 import type { Db, PayoutBatch, Report, Rules, Tester } from "./types.ts";
 
@@ -209,5 +210,15 @@ export function setRules(patch: Partial<Record<keyof Rules, unknown>>, tightenOn
     if (conf !== undefined) r.minConfidence = Math.min(1, conf);
     save(db);
     return r;
+  });
+}
+
+// Hosted demo: back to the seeded playtest. A batch PayPal hasn't confirmed would vanish from the ledger, so it blocks the reset.
+export function resetDemo() {
+  return locked((db) => {
+    const open = db.batches.find((b) => b.status === "SENDING");
+    if (open) throw new Error(`${open.id} isn't confirmed by PayPal yet. Check statuses on Payouts before resetting`);
+    save(seed());
+    return { ok: true };
   });
 }

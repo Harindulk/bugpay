@@ -1,8 +1,9 @@
 import { review } from "../../../../lib/actions.ts";
-import { handle } from "../../../../lib/http.ts";
+import { handle, studio } from "../../../../lib/http.ts";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   return handle(async () => {
+    studio(req);
     const { id } = await ctx.params;
     const b = await req.json();
     if (!["approve", "reject", "reopen"].includes(b.action)) throw new Error("Unknown action");

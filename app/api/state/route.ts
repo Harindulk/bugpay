@@ -12,6 +12,7 @@ export function GET() {
     pool: pool(db),
     autopaidToday: autopaidToday(db),
     mode: { paypal: mock() ? "mock" : "sandbox", ai: process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN ? "claude" : "rules" },
+    locked: !!process.env.STUDIO_PASSCODE,
     paypalClientId: mock() ? null : process.env.PAYPAL_CLIENT_ID,
   });
 }

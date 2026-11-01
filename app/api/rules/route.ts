@@ -1,6 +1,9 @@
 import { setRules } from "../../../lib/actions.ts";
-import { handle } from "../../../lib/http.ts";
+import { handle, studio } from "../../../lib/http.ts";
 
 export async function POST(req: Request) {
-  return handle(async () => setRules(await req.json()));
+  return handle(async () => {
+    studio(req);
+    return setRules(await req.json());
+  });
 }
