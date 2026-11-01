@@ -100,3 +100,12 @@ export async function payoutStatus(paypalBatchId: string) {
     items: r.items.map((i) => ({ senderItemId: i.payout_item.sender_item_id, paypalItemId: i.payout_item_id, status: i.transaction_status })),
   };
 }
+
+// Takes back an UNCLAIMED item (nobody has a PayPal account on that email yet). PayPal answers RETURNED.
+export async function cancelUnclaimed(paypalItemId: string): Promise<string> {
+  if (mock() || paypalItemId.startsWith("MOCK")) return "RETURNED";
+  const r = await call<{ transaction_status: string }>(
+    "POST", `/v1/payments/payouts-item/${encodeURIComponent(paypalItemId)}/cancel`, {}, `cancel-${paypalItemId}`,
+  );
+  return r.transaction_status;
+}

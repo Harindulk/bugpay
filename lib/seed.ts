@@ -87,8 +87,8 @@ export function seed(now = new Date()): Db {
     rep.payoutItem = `${id}-item`;
     return { reportId: id, email: rep.tester.email, amount: rep.bounty, status, paypalItemId: `MOCKITEM${id.slice(4)}` };
   };
-  const batch = (id: string, when: string, trigger: "autopilot" | "studio", ids: string[]) =>
-    ({ id, paypalBatchId: `MOCKBATCH${id.slice(3)}`, createdAt: when, status: "SUCCESS", trigger, items: ids.map((x) => item(x)) });
+  const batch = (id: string, when: string, trigger: "autopilot" | "studio", ids: string[], status?: string) =>
+    ({ id, paypalBatchId: `MOCKBATCH${id.slice(3)}`, createdAt: when, status: "SUCCESS", trigger, items: ids.map((x) => item(x, status)) });
 
   return {
     ledgerId: crypto.randomUUID().slice(0, 8),
@@ -103,7 +103,7 @@ export function seed(now = new Date()): Db {
     reports,
     batches: [
       batch("PB-0001", at(2, 14, 41), "autopilot", ["BUG-0142"]),
-      batch("PB-0002", at(1, 9, 6), "autopilot", ["BUG-0143"]),
+      batch("PB-0002", at(1, 9, 6), "autopilot", ["BUG-0143"], "UNCLAIMED"), // no PayPal account on Lena's email yet
       batch("PB-0003", at(1, 16, 3), "autopilot", ["BUG-0145"]),
       batch("PB-0004", at(1, 18, 30), "studio", ["BUG-0141"]),
       batch("PB-0005", minsAgo(79), "autopilot", ["BUG-0150"]),

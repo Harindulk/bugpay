@@ -11,7 +11,7 @@ Bugpay does the reading and the paying:
 3. **Claude** checks each report against the playtest brief, the known issues and every earlier report. It decides whether the bug is valid, a duplicate (and of which bug), not a bug, or missing information. It grades severity S1 to S4, writes clean repro steps and explains its call in a sentence a tester would accept.
 4. The studio's price table sets the bounty. Claude never picks the amount.
 5. **Autopilot** pays a valid bug on the spot through **PayPal Payouts** when Claude is sure enough and the bounty fits under a per-bug cap and a daily cap. Everything else waits in the triage queue.
-6. The studio approves or edits the rest in the queue and sends them as one Payouts batch. The ledger tracks every payout's PayPal status, plus the pool against what was funded.
+6. The studio approves or edits the rest in the queue and sends them as one Payouts batch. The ledger tracks every payout's PayPal status, plus the pool against what was funded. A failed payout goes back to the queue as owed; one PayPal returns, or one nobody claimed that the studio takes back, goes back into the pool.
 7. Or the studio tells the **agent**: "approve Lena's handbrake bug at $20, close the feature request and pay everything approved". Claude reads the queue and uses the same approve, close and pay actions as the buttons.
 
 ## PayPal APIs used
@@ -20,7 +20,8 @@ Bugpay does the reading and the paying:
 |---|---|
 | Funding the pool | Orders v2 (`POST /v2/checkout/orders`, `POST /v2/checkout/orders/{id}/capture`) with the PayPal JavaScript SDK buttons |
 | Paying testers | Payouts v1 (`POST /v1/payments/payouts`), one item per bug, `sender_item_id` = the bug id |
-| Payout status | `GET /v1/payments/payouts/{batch_id}` from the ledger's "Check statuses with PayPal" |
+| Payout status | `GET /v1/payments/payouts/{batch_id}` from the ledger's "Check statuses with PayPal"; each bug shows its own item state (received, unclaimed, failed, returned) |
+| Unclaimed bounties | `POST /v1/payments/payouts-item/{item_id}/cancel` takes back a payout nobody claimed, so the bounty goes back into the pool instead of waiting PayPal's 30 days |
 | Auth | OAuth 2.0 client credentials (`POST /v1/oauth2/token`) |
 
 Two guards stop double payment: every capture and payout call sends a `PayPal-Request-Id`, and every batch gets a unique `sender_batch_id`, which PayPal refuses to reuse.
@@ -31,6 +32,7 @@ Two guards stop double payment: every capture and payout call sends a `PayPal-Re
 - **What it decides:** verdict, duplicate-of, severity, confidence, a clean title, repro steps and the reasoning shown to the studio and the tester.
 - **What it does not decide:** the money. `lib/policy.ts` turns the judgement into a bounty from the price table and decides auto-pay or review, with unit tests for the caps.
 - **The agent** (`lib/agent.ts`) runs Claude with the SDK's tool runner and six strict tools: list the queue, read the pool, approve, close, pay approved, change autopilot. Tester-written text reaches it, so its limits live in the tools, not the prompt: it can't approve a report that has no severity, it can't set a bounty above twice the price table, and everything it pays counts against the same daily cap as autopilot, across commands. All three limits are unit tested.
+- **Testers can try to give the AI orders.** The demo data has one (BUG-0151 asks for $500 and a bigger cap). A check in `lib/policy.ts` holds any report that talks to the AI for a person, the agent's approve tool refuses it even when the studio's command says to do what it asks, and the caps hold either way.
 - **No key?** Triage falls back to keyword rules (`rules()` in `lib/triage.ts`). Rules are never sure enough to trigger autopilot.
 
 ## Run it

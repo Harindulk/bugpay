@@ -4,7 +4,7 @@ import { AgGridReact } from "ag-grid-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Fund } from "../components/Fund.tsx";
 import { gridTheme } from "../components/grid.ts";
-import { ago, api, SevPill, Shell, StatusPill, usd, useStateApi, verdictWords, type State } from "../components/ui.tsx";
+import { ago, api, PayoutPill, SevPill, Shell, StatusPill, usd, useStateApi, verdictWords, type State } from "../components/ui.tsx";
 import { FAILED } from "../lib/policy.ts";
 import type { Report, ReportStatus } from "../lib/types.ts";
 
@@ -269,6 +269,7 @@ function Detail({ r, s, busy, act, onOpen }: {
   const [bounty, setBounty] = useState(r ? String(r.bounty || (r.triage.severity ? s.campaign.rules.prices[r.triage.severity] : 0)) : "0");
   if (!r) return <aside className="card empty"><b>No report selected</b><span>Pick a row to see Claude's reasoning.</span></aside>;
   const t = r.triage;
+  const item = s.batches.flatMap((b) => b.items).filter((i) => i.reportId === r.id).at(-1); // a re-paid bug's latest payout
   const send = (action: string) => act(action, () => api(`/api/reports/${r.id}`, action === "approve" ? { action, bounty: Number(bounty) } : { action }));
   return (
     <aside className="card detail" aria-labelledby="d-title">
@@ -290,7 +291,13 @@ function Detail({ r, s, busy, act, onOpen }: {
         <p className="muted small" style={{ margin: 0 }}>{t.decision === "auto_pay" ? "Autopilot paid it: " : "Held for you: "}{t.decisionReason}.</p>
       </div>
       {r.status === "paid" ? (
-        <p style={{ margin: 0 }}>Paid <b className="num">{usd(r.bounty)}</b> to {r.tester.email} through PayPal Payouts.</p>
+        <div className="paid">
+          <p style={{ margin: 0 }}>Paid <b className="num">{usd(r.bounty)}</b> to {r.tester.email} through PayPal Payouts. {item && <PayoutPill s={item.status} />}</p>
+          {item?.status === "UNCLAIMED" && <>
+            <p className="muted small" style={{ margin: 0 }}>No PayPal account uses this email yet. PayPal holds the money for 30 days, then sends it back.</p>
+            <button className="btn" disabled={!!busy} onClick={() => send("return")}>{busy === "return" ? "Asking PayPal" : `Take ${usd(r.bounty)} back into the pool`}</button>
+          </>}
+        </div>
       ) : r.status === "rejected" ? (
         <div className="decide" style={{ gridTemplateColumns: "1fr" }}><button className="btn" disabled={!!busy} onClick={() => send("reopen")}>Reopen</button></div>
       ) : (

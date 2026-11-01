@@ -64,6 +64,17 @@ const statusPill: Record<ReportStatus, [string, string]> = {
 };
 export const StatusPill = ({ s }: { s: ReportStatus }) => <span className={`pill ${statusPill[s][0]}`}>{statusPill[s][1]}</span>;
 
+// One PayPal payout item's transaction_status, in words.
+const payoutWords: Record<string, [string, string]> = {
+  SENDING: ["warning", "Not confirmed"], PENDING: ["neutral", "Sending"], SUCCESS: ["positive", "Received"],
+  UNCLAIMED: ["warning", "Unclaimed"], ONHOLD: ["neutral", "On hold"], RETURNED: ["neutral", "Back in pool"],
+  FAILED: ["negative", "Failed"], DENIED: ["negative", "Denied"], BLOCKED: ["negative", "Blocked"],
+};
+export const PayoutPill = ({ s }: { s: string }) => {
+  const [tone, words] = payoutWords[s] ?? ["negative", s.charAt(0) + s.slice(1).toLowerCase()];
+  return <span className={`pill ${tone}`}>{words}</span>;
+};
+
 const sevName: Record<Severity, string> = { S1: "S1 crash", S2: "S2 blocks play", S3: "S3 glitch", S4: "S4 cosmetic" };
 export const SevPill = ({ s }: { s: Severity | null }) =>
   s ? <span className={`pill ${s === "S1" ? "negative" : s === "S2" ? "warning" : "neutral"}`}>{sevName[s]}</span> : <span className="muted">-</span>;

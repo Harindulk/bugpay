@@ -1,4 +1,4 @@
-import { review } from "../../../../lib/actions.ts";
+import { returnUnclaimed, review } from "../../../../lib/actions.ts";
 import { handle, studio } from "../../../../lib/http.ts";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -6,6 +6,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     studio(req);
     const { id } = await ctx.params;
     const b = await req.json();
+    if (b.action === "return") return returnUnclaimed(id);
     if (!["approve", "reject", "reopen"].includes(b.action)) throw new Error("Unknown action");
     return review(id, b.action, b.bounty === undefined || b.bounty === null || b.bounty === "" ? undefined : Number(b.bounty));
   });

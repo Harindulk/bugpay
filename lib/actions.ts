@@ -2,11 +2,11 @@
 // Every write runs inside locked(), which hands it a fresh copy of the store.
 import crypto from "node:crypto";
 import { autopaidToday, cents, decide, FAILED, instructsAi, nextId, pool } from "./policy.ts";
-import { captureOrder, createOrder, PayPalError, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
+import { cancelUnclaimed, captureOrder, createOrder, PayPalError, payoutStatus, sendPayouts, type PayoutLine } from "./paypal.ts";
 import { load, locked, save } from "./store.ts";
 import { seed } from "./seed.ts";
 import { judge } from "./triage.ts";
-import type { Db, PayoutBatch, Report, Rules, Tester } from "./types.ts";
+import type { Db, PayoutBatch, PayoutItem, Report, Rules, Tester } from "./types.ts";
 
 const FINAL = new Set([...FAILED, "SUCCESS"]);
 
@@ -34,6 +34,14 @@ function refused(db: Db, b: PayoutBatch) {
       r.payoutItem = undefined;
     }
   }
+}
+
+// PayPal gave the money back (unclaimed for 30 days, or cancelled): the bounty returns to the pool and the
+// report waits for the studio again, which may want a different email before paying it.
+function backToPool(r: Report, i: PayoutItem) {
+  r.status = "review";
+  r.payoutItem = undefined;
+  Object.assign(r.triage, { decision: "review", decisionReason: `PayPal returned the $${i.amount} nobody claimed at ${i.email}, so the bounty is back in the pool` });
 }
 
 // Records the batch and marks the reports paid BEFORE calling PayPal, then saves, so an answer lost in transit
@@ -157,19 +165,37 @@ export function refreshPayouts() {
       if (!s) continue;
       b.status = s.status;
       for (const i of b.items) {
-        const was = i.status;
+        if (FAILED.has(i.status)) continue; // already back with the studio (failed, returned, cancelled); a stale answer never reopens it
         const m = s.items.find((x) => x.senderItemId === `${i.reportId}-item`);
         if (m) Object.assign(i, { status: m.status, paypalItemId: m.paypalItemId });
         else if (s.status === "DENIED") i.status = "DENIED";
         const r = db.reports.find((x) => x.id === i.reportId);
-        if (r && r.status === "paid" && FAILED.has(i.status) && !FAILED.has(was)) {
-          r.status = "approved"; // PayPal didn't deliver it: back in the queue, counted as owed
-          r.payoutItem = undefined;
+        if (r && r.status === "paid" && FAILED.has(i.status)) {
+          if (i.status === "RETURNED") backToPool(r, i);
+          else {
+            r.status = "approved"; // PayPal didn't deliver it: back in the queue, counted as owed
+            r.payoutItem = undefined;
+          }
         }
       }
     }
     save(db);
     return { batches: db.batches, errors };
+  });
+}
+
+// The studio takes back a bounty nobody claimed instead of waiting PayPal's 30 days.
+export function returnUnclaimed(reportId: string) {
+  return locked(async (db) => {
+    const r = db.reports.find((x) => x.id === reportId);
+    const i = db.batches.flatMap((b) => b.items).filter((x) => x.reportId === reportId).at(-1); // a re-paid bug's latest payout
+    if (!r || r.status !== "paid" || !i) throw new Error(`${reportId} has no payout to return`);
+    if (i.status !== "UNCLAIMED") throw new Error(`${reportId}'s payout is ${i.status.toLowerCase()}, not unclaimed`);
+    if (!i.paypalItemId) throw new Error("Check statuses with PayPal first, so the payout item id is known");
+    i.status = await cancelUnclaimed(i.paypalItemId);
+    if (i.status === "RETURNED") backToPool(r, i);
+    save(db);
+    return r;
   });
 }
 

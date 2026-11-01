@@ -132,6 +132,8 @@ textarea.input { height: auto; min-height: 112px; padding: 8px 10px; resize: ver
 .prices { display: flex; gap: 12px; font-size: var(--fs-small); color: var(--muted); flex-wrap: wrap; }
 .prices b { color: var(--text); font-weight: 500; }
 
+.paid { display: grid; gap: 8px; justify-items: start; }
+
 /* try it */
 .try { display: grid; gap: 10px; padding: 16px 20px; }
 .try-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

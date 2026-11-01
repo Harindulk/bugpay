@@ -3,12 +3,10 @@ import type { ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useMemo, useState } from "react";
 import { gridTheme } from "../../components/grid.ts";
-import { api, Shell, usd, useStateApi } from "../../components/ui.tsx";
+import { api, PayoutPill, Shell, usd, useStateApi } from "../../components/ui.tsx";
 
 interface Line { batch: string; paypalBatchId: string; sent: string; trigger: string; reportId: string; tester: string; country: string; email: string; amount: number; status: string }
 
-const statusClass = (s: string) => (s === "SUCCESS" ? "positive" : ["FAILED", "DENIED", "RETURNED", "BLOCKED"].includes(s) ? "negative" : s === "UNCLAIMED" || s === "SENDING" ? "warning" : "neutral");
-const statusWords: Record<string, string> = { SENDING: "Not confirmed", SUCCESS: "Received", PENDING: "Sending", UNCLAIMED: "Unclaimed", FAILED: "Failed", DENIED: "Denied", RETURNED: "Returned", ONHOLD: "On hold", BLOCKED: "Blocked" };
 
 export default function Ledger() {
   const { s, err, reload } = useStateApi();
@@ -28,7 +26,7 @@ export default function Ledger() {
     { field: "email", headerName: "PayPal email", flex: 1, minWidth: 200 },
     { field: "trigger", headerName: "Paid by", width: 110 },
     { field: "amount", headerName: "Amount", width: 110, type: "rightAligned", valueFormatter: (p) => usd(p.value), cellClass: ["num", "ag-right-aligned-cell"] },
-    { field: "status", headerName: "PayPal status", width: 140, cellRenderer: (p: { value: string }) => <span className={`pill ${statusClass(p.value)}`}>{statusWords[p.value] ?? p.value}</span> },
+    { field: "status", headerName: "PayPal status", width: 140, cellRenderer: (p: { value: string }) => <PayoutPill s={p.value} /> },
     { field: "paypalBatchId", headerName: "Payout batch", width: 200, cellClass: "id" },
   ], []);
 
@@ -38,6 +36,7 @@ export default function Ledger() {
   const total = delivered.reduce((a, l) => a + l.amount, 0);
   const countries = new Set(delivered.map((l) => l.country)).size;
   const auto = delivered.filter((l) => l.trigger === "Autopilot");
+  const unclaimed = lines.filter((l) => l.status === "UNCLAIMED");
   const byTester = Object.values(delivered.reduce<Record<string, { name: string; country: string; email: string; bugs: number; amount: number }>>((m, l) => {
     const t = (m[l.email] ??= { name: l.tester, country: l.country, email: l.email, bugs: 0, amount: 0 });
     t.bugs += 1;
@@ -50,7 +49,7 @@ export default function Ledger() {
       <div className="titlerow">
         <div>
           <h1>Payouts</h1>
-          <p className="finding"><b>{usd(total)} sent to {new Set(delivered.map((l) => l.email)).size} testers in {countries} countries</b> over {delivered.length} PayPal payouts{lines.length > delivered.length ? ` (${lines.length - delivered.length} failed and went back to the queue)` : ""}. Autopilot sent {auto.length} of them ({usd(auto.reduce((a, l) => a + l.amount, 0))}).</p>
+          <p className="finding"><b>{usd(total)} sent to {new Set(delivered.map((l) => l.email)).size} testers in {countries} countries</b> over {delivered.length} PayPal payouts{lines.length > delivered.length ? ` (${lines.length - delivered.length} failed or came back, and went back to the queue)` : ""}. Autopilot sent {auto.length} of them ({usd(auto.reduce((a, l) => a + l.amount, 0))}).{unclaimed.length > 0 && <> {unclaimed.length} unclaimed ({usd(unclaimed.reduce((a, l) => a + l.amount, 0))}): {unclaimed.map((l) => l.reportId).join(", ")}, which you can take back into the pool from the queue.</>}</p>
         </div>
         <div className="actions">
           <button className="btn" onClick={() => api<{ errors: string[] }>("/api/payouts").then((r) => { reload(); setMsg(r.errors.length ? { text: `Some batches couldn't be checked: ${r.errors.join("; ")}`, bad: true } : { text: "Statuses checked with PayPal", bad: false }); }, (e) => setMsg({ text: e.message, bad: true }))}>Check statuses with PayPal</button>
