@@ -115,15 +115,18 @@ export function review(id: string, action: "approve" | "reject" | "reopen", boun
   });
 }
 
-// budget: what this caller may still send (the agent's per-command allowance), checked and spent inside the lock.
-export function payApproved(budget: { left: number } = { left: Infinity }) {
+// The agent shares the daily cap with autopilot, checked inside the lock so back-to-back commands can't both pass it.
+export function payApproved(by: "studio" | "agent" = "studio") {
   return locked(async (db) => {
     const due = db.reports.filter((r) => r.status === "approved");
     if (!due.length) throw new Error("Nothing approved to pay");
     const total = cents(due.reduce((s, r) => s + r.bounty, 0));
-    if (total > budget.left) throw new Error(`$${total} would pass the $${budget.left} the agent may still send in this command; the studio can press Pay instead`);
-    budget.left = cents(budget.left - total);
-    return pay(db, due, "studio");
+    if (by === "agent") {
+      const used = autopaidToday(db);
+      const cap = db.campaign.rules.dailyCap;
+      if (cents(used + total) > cap) throw new Error(`$${total} would pass the $${cap} daily cap ($${used} already sent today by autopilot and the agent); the studio can press Pay instead`);
+    }
+    return pay(db, due, by);
   });
 }
 

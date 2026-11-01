@@ -13,16 +13,16 @@ const { load } = await import("./store.ts");
 const run = (tools: ReturnType<typeof agentTools>, name: string, input: unknown) =>
   (tools.find((t) => t.name === name) as unknown as { run: (i: unknown) => Promise<string> }).run(input);
 
-test("the agent's budget holds across pay calls queued back to back", async () => {
-  const tools = agentTools([]); // daily cap $50
-  await run(tools, "approve_report", { id: "BUG-0148", bounty: 30 }); // + BUG-0146 already approved at $20 = $50
+test("the daily cap holds across agent pay calls queued back to back", async () => {
+  const tools = agentTools([]); // daily cap $50, autopilot already sent $8 today
+  await run(tools, "approve_report", { id: "BUG-0148", bounty: 22 }); // + BUG-0146 already approved at $20 = $42
   const [first, , second] = await Promise.all([
     run(tools, "pay_approved", {}),
-    run(tools, "approve_report", { id: "BUG-0147", bounty: 20 }),
-    run(tools, "pay_approved", {}),
+    review("BUG-0147", "approve", 20),
+    run(agentTools([]), "pay_approved", {}),
   ]);
   assert.doesNotMatch(first, /^Refused/);
-  assert.match(second, /^Refused: \$20 would pass the \$0/);
+  assert.match(second, /^Refused: \$20 would pass the \$50 daily cap/);
   assert.equal(load().reports.find((r) => r.id === "BUG-0147")!.status, "approved");
 });
 

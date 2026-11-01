@@ -64,7 +64,7 @@ export default function Queue() {
   const count = (k: ReportStatus | "all") => (k === "all" ? s.reports.length : s.reports.filter((r) => r.status === k).length);
   const approved = s.reports.filter((r) => r.status === "approved");
   const autoToday = s.batches
-    .filter((b) => b.trigger === "autopilot" && new Date(b.createdAt).toDateString() === new Date().toDateString())
+    .filter((b) => b.trigger !== "studio" && new Date(b.createdAt).toDateString() === new Date().toDateString())
     .flatMap((b) => b.items).filter((i) => !FAILED.has(i.status)).length; // same items autopaidToday counts
 
   return (
@@ -74,7 +74,7 @@ export default function Queue() {
           <h1>{s.campaign.game.split(":")[0]} {s.campaign.build} playtest</h1>
           <p className="finding">
             <b>{count("review")} {count("review") === 1 ? "report needs" : "reports need"} your call.</b>{" "}
-            Autopilot paid {autoToday} {autoToday === 1 ? "bug" : "bugs"} today ({usd(s.autopaidToday)} of the {usd(s.campaign.rules.dailyCap)} daily cap).
+            Autopilot and the agent paid {autoToday} {autoToday === 1 ? "bug" : "bugs"} today ({usd(s.autopaidToday)} of the {usd(s.campaign.rules.dailyCap)} daily cap).
           </p>
         </div>
         <div className="actions">
@@ -157,7 +157,7 @@ function AgentBox({ ai, onDone }: { ai: State["mode"]["ai"]; onDone: () => void 
           placeholder="Approve Lena's handbrake bug at $20, close the feature request, then pay everything approved" disabled={busy} />
         <button className="btn primary" disabled={busy || !cmd.trim()}>{busy ? "Working" : "Run"}</button>
       </form>
-      {ai === "rules" && !res && !err && <p className="muted small" style={{ margin: 0 }}>Needs a Claude key in .env.local. It can approve, close and pay, up to the daily cap per command.</p>}
+      {ai === "rules" && !res && !err && <p className="muted small" style={{ margin: 0 }}>Needs a Claude key in .env.local. It can approve, close and pay, inside the daily cap it shares with autopilot.</p>}
       {err && <p className="error" role="alert" style={{ margin: 0 }}>{err}</p>}
       {res && (
         <div className="agent-out" aria-live="polite">

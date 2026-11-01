@@ -50,7 +50,7 @@ export interface PayoutBatch {
   paypalBatchId: string; // empty until PayPal confirms the batch
   createdAt: string;
   status: string; // PayPal batch_status
-  trigger: "autopilot" | "studio";
+  trigger: "autopilot" | "agent" | "studio";
   items: PayoutItem[];
 }
 

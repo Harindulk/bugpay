@@ -17,7 +17,7 @@ export default function Ledger() {
     if (!s) return [];
     return [...s.batches].reverse().flatMap((b) => b.items.map((i) => {
       const r = s.reports.find((x) => x.id === i.reportId)!;
-      return { batch: b.id, paypalBatchId: b.paypalBatchId, sent: b.createdAt, trigger: b.trigger === "autopilot" ? "Autopilot" : "Studio", reportId: i.reportId, tester: r.tester.name, country: r.tester.country, email: i.email, amount: i.amount, status: i.status };
+      return { batch: b.id, paypalBatchId: b.paypalBatchId, sent: b.createdAt, trigger: b.trigger === "autopilot" ? "Autopilot" : b.trigger === "agent" ? "Agent" : "Studio", reportId: i.reportId, tester: r.tester.name, country: r.tester.country, email: i.email, amount: i.amount, status: i.status };
     }));
   }, [s]);
 

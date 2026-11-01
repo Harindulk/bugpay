@@ -20,10 +20,11 @@ export function pool(db: Db) {
 
 const sameDay = (a: string, b: Date) => new Date(a).toDateString() === b.toDateString();
 
+// What autopilot and the agent sent today; both answer to the one daily cap. The studio's own Pay button does not count.
 export function autopaidToday(db: Db, now = new Date()): number {
   return cents(
     db.batches
-      .filter((b) => b.trigger === "autopilot" && sameDay(b.createdAt, now))
+      .filter((b) => b.trigger !== "studio" && sameDay(b.createdAt, now))
       .flatMap((b) => b.items)
       .filter((i) => !FAILED.has(i.status))
       .reduce((s, i) => s + i.amount, 0),
