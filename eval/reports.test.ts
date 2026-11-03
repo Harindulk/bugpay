@@ -24,8 +24,11 @@ test("score counts a wrong autopay and a caught duplicate", () => {
   const s = score([
     { r: bug, j: j("needs_info"), autopay: false },
     { r: dup, j: j("duplicate", dup.duplicateOf), autopay: false },
-    { r: { ...dup, id: "X" }, j: j("valid"), autopay: true },
+    { r: { ...dup, id: "X" }, j: j("valid"), autopay: true, bounty: 8 },
   ]);
+  assert.equal(s.dollarsWronglyAutopaid, 8);
+  assert.equal(s.realBugsAutopaid, "0/1");
+  assert.equal(s.copiesFlagged, "1/2");
   assert.equal(s.duplicatesCaught, "1/2");
   assert.equal(s.wrongAutopays, 1);
   assert.equal(s.realBugsMissed, 1);

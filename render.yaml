@@ -9,7 +9,7 @@ services:
     startCommand: npm start
     envVars:
       - key: NODE_VERSION
-        value: "22"
+        value: "24"
       - key: NEXT_TELEMETRY_DISABLED
         value: "1"
       - key: PAYPAL_CLIENT_ID

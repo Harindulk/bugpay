@@ -1,6 +1,8 @@
 # Bugpay
 
-Bug bounties for game playtests. The first tester to find a bug gets paid; copies and AI slop don't. Claude reads every report, the studio's price table and caps decide the money, and PayPal Payouts sends it.
+Per-bug bounties for indie game playtests. Testers anywhere report what breaks in your beta build, the first person to find each bug gets paid through PayPal Payouts, and copies and AI slop don't.
+
+It's made for a small studio running a beta with 10 to 100 outside testers, where a bug is worth $3 to $40 and the testers live in a dozen countries. Claude reads each report against the build's playtest brief, its known issues and every earlier report. The studio's price table and caps, written in code, decide the money. The demo runs a playtest of StarFun Games' *Drive Away: Endless Road Trip* 1.4.0 beta.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Harindulk/bugpay)
 
@@ -8,11 +10,22 @@ Bug bounties for game playtests. The first tester to find a bug gets paid; copie
 
 Demo video (3 min): [coming before the Devpost close]
 
-**Live sandbox run:** [docs/live-run.md](docs/live-run.md) is the output of `npm run live` against the real PayPal sandbox and Claude: the PayPal batch id and item statuses, a duplicate held, and the agent refusing the prompt-injection report.
+**Try it in a minute, no keys needed** (Node 24 or newer):
+
+```bash
+git clone https://github.com/Harindulk/bugpay && cd bugpay
+npm install && npm run build && npm start   # http://localhost:3000
+```
+
+With no keys it runs in mock mode: PayPal ids are fake and triage uses keyword rules, and the sidebar says so. The **Try it** card on the queue walks you through filing a bug, a duplicate and the prompt-injection report.
+
+**Proof run:** `npm run proof` runs the whole flow from a script (a new bug is triaged and paid, a duplicate is held, the agent is told to obey a prompt-injection report and refuses), then the triage eval, then screenshots of every screen. Without keys it labels everything as mock: [docs/mock-run.md](docs/mock-run.md), [docs/eval-rules.md](docs/eval-rules.md) and the screenshots below. With PayPal sandbox and Claude keys in `.env.local` the same command writes `docs/live-run.md` and `docs/eval-claude.md` from the real APIs.
+
+![npm run proof in mock mode: the tester form, the queue holding the prompt-injection report BUG-0151, the payouts ledger, and the tester's My bugs page](docs/proof.png)
 
 ## Why per-bug pay needs triage
 
-Paying for each accepted bug is how crowd QA already works: uTest and Test IO pay per approved bug and nothing for duplicates ([Test IO Academy](https://academy.test.io/en/articles/6184452-new-payout-system)). The catch is that cash per report draws junk, and AI has made junk cheap to write.
+Paying for each accepted bug is how crowd QA already works for apps and games: uTest and Test IO pay per approved bug and nothing for duplicates ([Test IO Academy](https://academy.test.io/en/articles/6184452-new-payout-system)). The catch is that cash per report draws junk, and AI has made junk cheap to write.
 
 - HackerOne says "60-80% of vulnerability submissions are invalid" and sells AI triage to filter them ([HackerOne](https://www.hackerone.com/platform/triage)).
 - curl ended its bug bounty at the end of January 2026 after a flood of AI-generated reports. Daniel Stenberg said the goal was to "remove the incentive for people to submit crap and non-well researched reports to us. AI generated or not." ([The Register, 21 Jan 2026](https://www.theregister.com/2026/01/21/curl_ends_bug_bounty/))
@@ -73,7 +86,7 @@ Two guards stop double payment: every capture and payout call sends a `PayPal-Re
 
 ## Run it
 
-Needs Node 22 or newer.
+Needs Node 24 or newer (the scripts run TypeScript directly).
 
 ```bash
 npm install
@@ -88,7 +101,7 @@ To run against the real PayPal sandbox and Claude:
 2. Copy `.env.example` to `.env.local` and fill in `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET` and `ANTHROPIC_API_KEY`.
 3. `npm run build && npm start`. "Add funds" now shows real PayPal buttons; log in with a sandbox personal account (Sandbox > Accounts) to pay. Payouts to tester emails that aren't sandbox accounts show as Unclaimed, which is PayPal's normal behaviour.
 
-Then `npm run live` does one scripted run against both (it resets the local demo data first): it files a new bug that autopilot pays, files a duplicate, asks the agent to obey the injection report, polls PayPal until the payouts settle and writes it all to `docs/live-run.md`. Set `SANDBOX_TESTER_EMAIL` to a sandbox personal account so the payout lands as Received.
+Then `npm run live` does one scripted run against both (it resets the local demo data first): it files a new bug and pays it, files a duplicate, asks the agent to obey the injection report, polls PayPal until the payouts settle and writes it all to `docs/live-run.md`. `npm run proof` is that, then the eval, then `npm run shots` (screenshots of each screen in Chrome, saved to `docs/proof/`). Set `SANDBOX_TESTER_EMAIL` to a sandbox personal account so the payout lands as Received.
 
 To host it for free, connect the repo to [Render](https://render.com) as a Blueprint (`render.yaml`) and add the three keys as environment variables, plus `STUDIO_PASSCODE`. With a passcode set, anyone can file bugs on the tester form, but paying, approving, funding, the autopilot rules, the agent and **Reset demo** ask for it, and an address that guesses wrong ten times is locked out for an hour. The JSON store is on the instance's disk, so the demo data also resets when the service restarts.
 
@@ -116,7 +129,20 @@ npm test
 npm run eval
 ```
 
-Each report goes through the same steps as a real one (triage, then the price table and caps, then the injection hold) against the seeded playtest. The script prints how many verdicts were right, severities right, duplicates caught with the right original, wrong autopays, real bugs missed and injection reports held, then lists every miss. With `ANTHROPIC_API_KEY` in `.env.local` it calls Claude about 50 times; without it, it scores the keyword rules.
+Each report goes through the same steps as a real one (triage, then the price table and caps, then the injection hold) against the seeded playtest, and the results go to `docs/eval-rules.md` or `docs/eval-claude.md` with every miss listed. With `ANTHROPIC_API_KEY` in `.env.local` it calls Claude about 50 times; without it, it scores the keyword rules.
+
+| metric | what it counts |
+|---|---|
+| wrongAutopays, dollarsWronglyAutopaid | money autopilot would send for a report that shouldn't be paid without a person |
+| realBugsAutopaid | real bugs paid on the spot (holding everything would score 0 wrong autopays, so this keeps the first number honest) |
+| copiesFlagged, duplicatesCaught | reworded duplicates marked duplicate, and with the right original named |
+| slopAndVagueFlagged | made-up and vague reports not called valid |
+| injectionsHeld | reports that try to instruct the AI and were not paid |
+| verdictRight, severityRight, realBugsMissed | the rest of the triage call |
+
+Keyword-rule baseline, no AI, on the synthetic set ([docs/eval-rules.md](docs/eval-rules.md)): 27/50 verdicts right, 4/11 duplicates caught with the right original, 2/11 slop and vague reports flagged. It makes 0 wrong autopays only because it pays nothing on its own (0/19 real bugs), since every keyword call comes in under the 80% confidence bar. That gap is the reason triage needs a model. Claude's results on the same set go in `docs/eval-claude.md`.
+
+Two cautions about any number from this set. The reports were written with Claude's help, so Claude may find them easier than reports from real testers. And it is 50 reports, so one report moves a rate by two points.
 
 ## Layout
 
@@ -132,7 +158,8 @@ lib/policy.ts         price table, caps, pool maths (no AI)
 lib/paypal.ts         Orders, Payouts and OAuth, with mock mode
 lib/store.ts          JSON file store (single studio)
 mcp/server.ts         the six studio tools as an MCP server
-scripts/live.ts       npm run live: one scripted sandbox + Claude run
+scripts/live.ts       npm run live: one scripted run of the flow (live with keys, labelled mock without)
+scripts/shots.ts      npm run shots: screenshots of each screen for docs/proof
 eval/                 labelled synthetic reports and npm run eval
 ```
 
@@ -141,7 +168,7 @@ Built with Next.js, AG Grid Community and the Anthropic SDK.
 ## Limits
 
 - One studio and one playtest per install, stored in a JSON file.
-- No login: the studio screens are open to anyone who can reach the server, and so is the read-only state, including tester emails (that's how My bugs finds a tester's reports). Put it behind auth before using it with real money.
+- No accounts. With `STUDIO_PASSCODE` set, every action that moves money or changes rules asks for one shared passcode; without it (the local default) the studio screens are open to anyone who can reach the server. The read-only state is always public, tester emails included, because that's how My bugs finds a tester's reports. Put real auth in front before using it with real money.
 - Sandbox only. `lib/paypal.ts` hard-codes the sandbox host.
 
 ## Licence
