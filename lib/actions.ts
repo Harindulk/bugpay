@@ -165,22 +165,54 @@ export function refreshPayouts() {
       if (!s) continue;
       b.status = s.status;
       for (const i of b.items) {
-        if (FAILED.has(i.status)) continue; // already back with the studio (failed, returned, cancelled); a stale answer never reopens it
         const m = s.items.find((x) => x.senderItemId === `${i.reportId}-item`);
-        if (m) Object.assign(i, { status: m.status, paypalItemId: m.paypalItemId });
-        else if (s.status === "DENIED") i.status = "DENIED";
-        const r = db.reports.find((x) => x.id === i.reportId);
-        if (r && r.status === "paid" && FAILED.has(i.status)) {
-          if (i.status === "RETURNED") backToPool(r, i);
-          else {
-            r.status = "approved"; // PayPal didn't deliver it: back in the queue, counted as owed
-            r.payoutItem = undefined;
-          }
-        }
+        if (m) applyItem(db, i, m.status, m.paypalItemId);
+        else if (s.status === "DENIED") applyItem(db, i, "DENIED");
       }
     }
     save(db);
     return { batches: db.batches, errors };
+  });
+}
+
+// One payout item's status from PayPal, whether polled or pushed by a webhook.
+function applyItem(db: Db, i: PayoutItem, status: string, paypalItemId?: string) {
+  if (FAILED.has(i.status)) return; // already back with the studio (failed, returned, cancelled); a stale answer never reopens it
+  i.status = status;
+  if (paypalItemId) i.paypalItemId = paypalItemId;
+  const r = db.reports.find((x) => x.id === i.reportId);
+  if (r && r.status === "paid" && FAILED.has(status)) {
+    if (status === "RETURNED") backToPool(r, i);
+    else {
+      r.status = "approved"; // PayPal didn't deliver it: back in the queue, counted as owed
+      r.payoutItem = undefined;
+    }
+  }
+}
+
+export interface PayoutEvent {
+  event_type: string;
+  resource: {
+    payout_batch_id?: string; payout_item_id?: string; transaction_status?: string; payout_item?: { sender_item_id?: string };
+    batch_header?: { payout_batch_id?: string; batch_status?: string };
+  };
+}
+
+// A verified PayPal webhook (PAYMENT.PAYOUTSBATCH.* or PAYMENT.PAYOUTS-ITEM.*). Events for batches this ledger
+// doesn't know are ignored; repeats and out-of-order events are harmless because a failed item never reopens.
+export function applyWebhook(e: PayoutEvent) {
+  return locked((db) => {
+    const res = e.resource ?? {};
+    const b = db.batches.find((x) => x.paypalBatchId && x.paypalBatchId === (res.payout_batch_id ?? res.batch_header?.payout_batch_id));
+    if (!b) return { applied: false };
+    if (e.event_type.startsWith("PAYMENT.PAYOUTSBATCH.") && res.batch_header?.batch_status) b.status = res.batch_header.batch_status;
+    else if (e.event_type.startsWith("PAYMENT.PAYOUTS-ITEM.") && res.transaction_status) {
+      const i = b.items.find((x) => `${x.reportId}-item` === res.payout_item?.sender_item_id);
+      if (!i) return { applied: false };
+      applyItem(db, i, res.transaction_status, res.payout_item_id);
+    } else return { applied: false };
+    save(db);
+    return { applied: true, batch: b.id };
   });
 }
 

@@ -109,3 +109,22 @@ export async function cancelUnclaimed(paypalItemId: string): Promise<string> {
   );
   return r.transaction_status;
 }
+
+// Webhooks are on when the sandbox app has one registered and its id is in PAYPAL_WEBHOOK_ID.
+export const webhooks = () => !mock() && !!process.env.PAYPAL_WEBHOOK_ID;
+
+// Asks PayPal whether a webhook really came from it. The event goes back byte for byte: re-serialised JSON can fail the check.
+export async function verifyWebhook(headers: Headers, raw: string): Promise<boolean> {
+  if (!webhooks()) return false;
+  const h = (k: string) => JSON.stringify(headers.get(k) ?? "");
+  const body = `{"auth_algo":${h("paypal-auth-algo")},"cert_url":${h("paypal-cert-url")},"transmission_id":${h("paypal-transmission-id")},`
+    + `"transmission_sig":${h("paypal-transmission-sig")},"transmission_time":${h("paypal-transmission-time")},`
+    + `"webhook_id":${JSON.stringify(process.env.PAYPAL_WEBHOOK_ID)},"webhook_event":${raw}}`;
+  const res = await fetch(`${BASE}/v1/notifications/verify-webhook-signature`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${await auth()}`, "Content-Type": "application/json" },
+    body,
+    signal: AbortSignal.timeout(20_000),
+  });
+  return res.ok && ((await res.json()) as { verification_status?: string }).verification_status === "SUCCESS";
+}

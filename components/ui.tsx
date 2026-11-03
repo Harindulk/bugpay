@@ -7,7 +7,7 @@ import type { Db, ReportStatus, Severity, Verdict } from "../lib/types.ts";
 export type State = Db & {
   pool: { funded: number; paid: number; approved: number; left: number };
   autopaidToday: number;
-  mode: { paypal: "mock" | "sandbox"; ai: "claude" | "rules" };
+  mode: { paypal: "mock" | "sandbox"; webhooks: boolean; ai: "claude" | "rules" };
   paypalClientId: string | null;
   locked: boolean; // the server wants a studio passcode for money, rules and agent calls
 };

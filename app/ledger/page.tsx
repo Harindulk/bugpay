@@ -1,7 +1,7 @@
 "use client";
 import type { ColDef } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { gridTheme } from "../../components/grid.ts";
 import { api, PayoutPill, Shell, usd, useStateApi } from "../../components/ui.tsx";
 
@@ -18,6 +18,14 @@ export default function Ledger() {
       return { batch: b.id, paypalBatchId: b.paypalBatchId, sent: b.createdAt, trigger: b.trigger === "autopilot" ? "Autopilot" : b.trigger === "agent" ? "Agent" : "Studio", reportId: i.reportId, tester: r.tester.name, country: r.tester.country, email: i.email, amount: i.amount, status: i.status };
     }));
   }, [s]);
+
+  // webhooks change the ledger on the server; poll while a payout is still on its way so it shows up live
+  const moving = !!s?.batches.some((b) => b.items.some((i) => ["SENDING", "PENDING", "ONHOLD"].includes(i.status)));
+  useEffect(() => {
+    if (!moving || !s?.mode.webhooks) return;
+    const t = setInterval(reload, 4000);
+    return () => clearInterval(t);
+  }, [moving, s?.mode.webhooks, reload]);
 
   const cols = useMemo<ColDef<Line>[]>(() => [
     { field: "sent", headerName: "Sent", width: 150, valueFormatter: (p) => new Date(p.value).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) },
@@ -52,7 +60,8 @@ export default function Ledger() {
           <p className="finding"><b>{usd(total)} sent to {new Set(delivered.map((l) => l.email)).size} testers in {countries} countries</b> over {delivered.length} PayPal payouts{lines.length > delivered.length ? ` (${lines.length - delivered.length} failed or came back, and went back to the queue)` : ""}. Autopilot sent {auto.length} of them ({usd(auto.reduce((a, l) => a + l.amount, 0))}).{unclaimed.length > 0 && <> {unclaimed.length} unclaimed ({usd(unclaimed.reduce((a, l) => a + l.amount, 0))}): {unclaimed.map((l) => l.reportId).join(", ")}, which you can take back into the pool from the queue.</>}</p>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => api<{ errors: string[] }>("/api/payouts").then((r) => { reload(); setMsg(r.errors.length ? { text: `Some batches couldn't be checked: ${r.errors.join("; ")}`, bad: true } : { text: "Statuses checked with PayPal", bad: false }); }, (e) => setMsg({ text: e.message, bad: true }))}>Check statuses with PayPal</button>
+          {s.mode.webhooks && <span className="pill positive" title="PayPal pushes each payout's status here, checked with PayPal's signature service">Live from PayPal webhooks</span>}
+          <button className="btn" onClick={() => api<{ errors: string[] }>("/api/payouts").then((r) => { reload(); setMsg(r.errors.length ? { text: `Some batches couldn't be checked: ${r.errors.join("; ")}`, bad: true } : { text: "Statuses checked with PayPal", bad: false }); }, (e) => setMsg({ text: e.message, bad: true }))}>{s.mode.webhooks ? "Re-check now" : "Check statuses with PayPal"}</button>
         </div>
       </div>
       {msg && <p className={msg.bad ? "error" : "muted"} role="status" style={{ margin: "-12px 0 0" }}>{msg.text}</p>}

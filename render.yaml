@@ -16,6 +16,9 @@ services:
         sync: false
       - key: PAYPAL_CLIENT_SECRET
         sync: false
+      # sandbox app > Webhooks: https://<this service>.onrender.com/api/webhooks/paypal, payout events; paste its id
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       # hosted demo: paying, approving, the rules, the agent and Reset demo ask for this

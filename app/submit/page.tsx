@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { api, Mark, SevPill, usd, useStateApi, verdictWords } from "../../components/ui.tsx";
 import type { Report } from "../../lib/types.ts";
@@ -14,7 +15,9 @@ export default function Submit() {
     setBusy(true);
     setErr("");
     try {
-      setDone(await api<Report>("/api/reports", Object.fromEntries(new FormData(e.currentTarget))));
+      const form = Object.fromEntries(new FormData(e.currentTarget));
+      setDone(await api<Report>("/api/reports", form));
+      localStorage.setItem("bugpay-tester-email", String(form.email));
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
 
@@ -26,7 +29,7 @@ export default function Submit() {
           <Mark size={32} />
           <div>
             <h1>Report a bug in {s ? `${s.campaign.game.split(":")[0]} ${s.campaign.build}` : "the playtest"}</h1>
-            <p className="muted" style={{ margin: 0 }}>{s?.campaign.studio} pays per accepted bug, straight to your PayPal.</p>
+            <p className="muted" style={{ margin: 0 }}>{s?.campaign.studio} pays per accepted bug, straight to your PayPal. <Link href="/bugs">My bugs</Link></p>
           </div>
         </div>
         {s && <p style={{ margin: 0 }}>{s.campaign.brief}</p>}
@@ -54,7 +57,10 @@ export default function Submit() {
                   ? <>Worth <b className="num">{usd(done.bounty)}</b> if the studio agrees. {done.triage.decisionReason}.</>
                   : <>The studio will take a look. {done.triage.decisionReason}.</>}
             </p>
-            <button className="btn" onClick={() => setDone(null)}>Report another bug</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="btn" onClick={() => setDone(null)}>Report another bug</button>
+              <Link className="btn" href="/bugs">See all my bugs</Link>
+            </div>
           </section>
         ) : (
           <form className="form" onSubmit={submit}>

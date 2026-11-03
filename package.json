@@ -8,11 +8,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "node --test --test-reporter=dot lib/ eval/",
-    "eval": "node --env-file-if-exists=.env.local eval/run.ts"
+    "test": "node --test --test-reporter=dot lib/ eval/ mcp/",
+    "mcp": "node --env-file-if-exists=.env.local mcp/server.ts",
+    "eval": "node --env-file-if-exists=.env.local eval/run.ts",
+    "live": "node --env-file-if-exists=.env.local scripts/live.ts",
+    "proof": "npm run live && npm run eval | tee docs/eval-run.txt"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.3.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "ag-grid-community": "^36.2.0",
     "ag-grid-react": "^36.2.0",
     "next": "^16.4.3",
