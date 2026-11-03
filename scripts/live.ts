@@ -3,7 +3,7 @@
 // Run: npm run live   (needs PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET, ANTHROPIC_API_KEY in .env.local;
 // SANDBOX_TESTER_EMAIL = a sandbox Personal account email, so the payout lands as SUCCESS, not UNCLAIMED)
 import fs from "node:fs";
-import { fileReport, refreshPayouts } from "../lib/actions.ts";
+import { fileReport, payApproved, refreshPayouts, review } from "../lib/actions.ts";
 import { runAgent } from "../lib/agent.ts";
 import { mock } from "../lib/paypal.ts";
 import { seed } from "../lib/seed.ts";
@@ -11,7 +11,7 @@ import { load, save } from "../lib/store.ts";
 import { MODEL } from "../lib/triage.ts";
 
 if (mock() || !process.env.ANTHROPIC_API_KEY) {
-  console.error("Needs PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET and ANTHROPIC_API_KEY in .env.local (see notes/HARINDU.md).");
+  console.error("Needs PAYPAL_CLIENT_ID, PAYPAL_CLIENT_SECRET and ANTHROPIC_API_KEY in .env.local (copy .env.example to .env.local; see Run it in the README).");
   process.exit(1);
 }
 const tester = process.env.SANDBOX_TESTER_EMAIL || "live.tester@testers.starfungames.com";
@@ -28,6 +28,12 @@ const a = await fileReport({
 });
 log(`- ${a.id} "${a.title}": **${a.triage.verdict} ${a.triage.severity ?? ""}**, ${Math.round(a.triage.confidence * 100)}% sure. Claude: "${a.triage.reasoning}"`);
 log(`- Decision (code, not Claude): ${a.triage.decision}, ${a.triage.decisionReason}. Bounty $${a.bounty}, status ${a.status}.`);
+if (a.status !== "paid") {
+  // autopilot held it (Claude unsure, or graded it over the per-bug cap): pay it the way the studio would, so a live batch exists
+  await review(a.id, "approve", a.bounty > 0 ? undefined : 8);
+  const b = await payApproved("studio");
+  log(`- Autopilot held it, so the studio approved it and pressed Pay: ${b.id}, ${b.items.length} item(s), PayPal batch ${b.paypalBatchId || "not confirmed"}.`);
+}
 
 log("\n## 2. The same bug again from someone else: duplicate, no pay");
 const b = await fileReport({
